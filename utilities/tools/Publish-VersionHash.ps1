@@ -28,9 +28,9 @@ foreach ($release in $response) {
         continue
     }
 
-    Write-Verbose "Download release zip for version '$($release.name)' and unpack it" -Verbose
-    Invoke-RestMethod -Uri $release.zipball_url -OutFile "$($release.name).zip"
-    Expand-Archive -LiteralPath "$($release.name).zip" -DestinationPath "$($release.name)"
+    Write-Verbose "Download release zip for version '$($release.tag_name)' and unpack it" -Verbose
+    Invoke-RestMethod -Uri $release.zipball_url -OutFile "$($release.tag_name).zip"
+    Expand-Archive -LiteralPath "$($release.tag_name).zip" -DestinationPath "$($release.tag_name)"
     Set-Location "$($release.name)\Azure-ResourceModules-*\"
 
     Write-Verbose "Get all bicep files" -Verbose
@@ -90,7 +90,7 @@ foreach ($release in $response) {
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
     $existingHashes
-    $existingHashes | Add-Member "$($release.name)" -Type "NoteProperty" -Value $moduleHashes
+    $existingHashes | Add-Member "$($release.tag_name)" -Type "NoteProperty" -Value $moduleHashes
     "$PSScriptRoot/fileHashes.json"
     $existingHashes | ConvertTo-Json -Depth 99 | Out-File "$PSScriptRoot/fileHashes.json"
 
