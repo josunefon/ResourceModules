@@ -1,3 +1,22 @@
+<#
+.SYNOPSIS
+    This script will create a filehash from all modules that are within CARML and upload the result to a storage account. 
+.DESCRIPTION
+    This script will use a json file to store the hashes. It can update that file as well. The json file has to be located on a storage account.
+    The script only works with a release package from GitHub. 
+    Changes in between releases are not tracked.
+.PARAMETER ReleaseTag
+
+.PARAMETER StorageAccountName
+
+.PARAMETER StorageAccountContainerName
+
+.PARAMETER StorageAccountSasToken
+
+.EXAMPLE
+#>
+
+
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $false)]
@@ -15,18 +34,18 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+# declare where the hash file will be stored.
 $storageUri = "https://$StorageAccountName.blob.core.windows.net/$StorageAccountContainerName/fileHashes.json?$StorageAccountSasToken"
 
+# import local module that does the hashing.
 Import-Module ./hackaton/azure/module-tracker.psm1
 
 Write-Verbose "Trying to download existing hash file" -Verbose
 if (Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "fileHashes.json" -Force) {
-    <# Action to perform if the condition is true #>
 }
 $null = Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "fileHashes.json" -Force
 
 Write-Verbose "Creating folder structure" -Verbose
-
 if (!(Get-ChildItem -Path "fileHashes.json" -Erroraction SilentlyContinue)) {
     $null = New-Item -Path "fileHashes.json"
 }
@@ -42,7 +61,7 @@ $response = Invoke-RestMethod -Method GET -Uri https://api.github.com/repos/Azur
 Write-Output "Found the following release tags:"
 $response.tag_name
 
-
+# switch which enables the user to either run the script only for a certain release tag or for all releases
 if ($ReleaseTag) {
     Write-Verbose "Release tag '$ReleaseTag' has been provided, only processing this release." -Verbose
     $response = Invoke-RestMethod -Method GET -Uri https://api.github.com/repos/Azure/ResourceModules/releases/tags/$ReleaseTag
@@ -51,10 +70,12 @@ else {
     Write-Verbose "No specific release tag has been provided, processing all available releases." -Verbose
 }
 
-foreach ($release in $response) {
+foreach ($release in $response[1..10]) {
 
+    # load the hash file
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
+    # if an existing release tag has been detected in the loaded file, the script will skip that release
     if ($existingHashes."$($release.tag_name)") {
         Write-Verbose "Found existing release in fileHashes.json. Skipping..." -Verbose
         continue
@@ -70,50 +91,71 @@ foreach ($release in $response) {
 
     Write-Verbose "Create folder to store compiled ARM templates and respective hashes" -Verbose
     $null = New-Item "../Azure-ResourceModules-ARM" -ItemType Directory
+
+    # initialize the hashtable
     $moduleHashes = @{}
 
+    # counter to display the hashing progress
     $totalModuleCount = $filter.Count
     $count = 0
 
     foreach ($module in $filter) {
         $count++
 
+        # the newer CARML versions have constructs in addition to modules, we will not include those
         if ($module.FullName -match 'constructs') {
             Write-Verbose "Detected construct. Skipping..." -Verbose
             continue
         }
-        #get providername
+
+        # get the providername
+        # split the full file path on a spot that is always the same
         $splitPath = ($module.FullName).split("Microsoft.")
+
+        # add the splitted-off "Microsoft." back in and remove the "\deploy.bicep" from the end to get the full name of the module
         $path = ("Microsoft." + $splitPath[-1]).split("\deploy.bicep")[0].replace("\", "/")
+
+        # since "\" are no good in file names we replace them with a "-" to receive the full name of the comipled ARM-json file
         $jsonPath = $path.Replace("/", "-")
 
         Write-Verbose "[$($release.tag_name)] - [$count/$totalModuleCount] - Building '$path'.." -Verbose
+
+        # if the file was compiled before, skip the compilation process
         if (Get-Content "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
             Write-Verbose "ARM file already exists. Skipping" -Verbose
             continue
         }
+
+        # compilation step. does not print any linter warnings
         az bicep build --file $module.FullName --outfile "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" --no-restore --only-show-errors
+
+        # do the hashing if the ARM-json exists
         if (Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
             $encodedText = Get-TemplateHash -TemplatePath "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
         }
         else {
             Write-Warning "File '$jsonPath-deploy.json' could not be found."
         }
+
+        # add the full modulename and the hash to the existing hashtable 
         $moduleHashes.Add($path, $encodedText)
     }
 
     Write-Verbose "Trying to read 'fileHashes.json'" -Verbose
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
+    # write the hashtable that contains all modulenames + hashes for the specific version back to the json file that was loaded from the storage account
     $existingHashes | Add-Member "$($release.tag_name)" -Type "NoteProperty" -Value $moduleHashes
     "$PSScriptRoot/fileHashes.json"
     $existingHashes | ConvertTo-Json -Depth 100 | Out-File "$PSScriptRoot/fileHashes.json"
 
-    Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
+    Set-Location "$PSScriptRoot/hackaton/azure/Publish-VersionHash-temp"
 }
+# cleanup
 Set-Location $PSScriptRoot
-Remove-Item "./Publish-VersionHash-temp" -Recurse -Force
+Remove-Item "$PSScriptRoot/hackaton/azure/Publish-VersionHash-temp" -Recurse -Force
 
+# upload the local json file back to the storage account. The file on the storage account will be overwritten
 Write-Verbose "Upload file to blob storage" -Verbose
 $storageContext = New-AzStorageContext -StorageAccountName $StorageAccountName -SasToken $StorageAccountSasToken
-$null = Set-AzStorageBlobContent -File "./fileHashes.json" -Container $StorageAccountContainerName -Context $storageContext -Force
+$null = Set-AzStorageBlobContent -File "$PSScriptRoot/fileHashes.json" -Container $StorageAccountContainerName -Context $storageContext -Force
