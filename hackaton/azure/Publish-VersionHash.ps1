@@ -56,8 +56,8 @@ if (!(Get-Content -Path "$PSScriptRoot/fileHashes.json")) {
     Add-Content -Path "$PSScriptRoot/fileHashes.json" -Value "{}"
 }
 
-$null = New-Item "./Publish-VersionHash-temp" -ItemType Directory
-Set-Location "./Publish-VersionHash-temp"
+$null = New-Item "$PSScriptRoot/Publish-VersionHash-temp" -ItemType Directory
+Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
 
 Write-Verbose "Get GitHub release info" -Verbose
 $response = Invoke-RestMethod -Method GET -Uri https://api.github.com/repos/Azure/ResourceModules/releases
@@ -74,9 +74,6 @@ else {
 }
 
 foreach ($release in $response) {
-
-    ls
-    $PSScriptRoot
     # load the hash file
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
@@ -87,9 +84,9 @@ foreach ($release in $response) {
     }
 
     Write-Verbose "Download release zip for version '$($release.tag_name)' and unpack it" -Verbose
-    Invoke-RestMethod -Uri $release.zipball_url -OutFile "$($release.tag_name).zip"
-    Expand-Archive -LiteralPath "$($release.tag_name).zip" -DestinationPath "$($release.tag_name)"
-    Set-Location "$($release.tag_name)\Azure-ResourceModules-*\"
+    Invoke-RestMethod -Uri $release.zipball_url -OutFile "$PSScriptRoot/$($release.tag_name).zip"
+    Expand-Archive -LiteralPath "$PSScriptRoot/$($release.tag_name).zip" -DestinationPath "$PSScriptRoot/$($release.tag_name)"
+    Set-Location "$PSScriptRoot/$($release.tag_name)/Azure-ResourceModules-*/"
 
     Write-Verbose "Get all bicep files" -Verbose
     $filter = Get-ChildItem -Recurse -Filter "deploy.bicep"
@@ -154,7 +151,8 @@ foreach ($release in $response) {
     "$PSScriptRoot/fileHashes.json"
     $existingHashes | ConvertTo-Json -Depth 100 | Out-File "$PSScriptRoot/fileHashes.json"
 
-    Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
+    $PSScriptRoot
+    Get-Location
 }
 # cleanup
 Set-Location $PSScriptRoot
