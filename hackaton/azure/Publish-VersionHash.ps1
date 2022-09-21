@@ -45,7 +45,7 @@ try {
     $null = Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoot/fileHashes.json" -Force
 }
 catch {
-    Write-Error "Was not able to find file 'fileHashes.json' on storage account '$StorageAccountName' in container '$StorageAccountContainerName'"
+    Write-Warning "Was not able to find file 'fileHashes.json' on storage account '$StorageAccountName' in container '$StorageAccountContainerName'."
 }
     
 Write-Verbose "Creating folder structure" -Verbose
