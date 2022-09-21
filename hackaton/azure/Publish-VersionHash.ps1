@@ -113,4 +113,3 @@ Remove-Item "./Publish-VersionHash-temp" -Recurse -Force
 Write-Verbose "Upload file to blob storage" -Verbose
 $storageContext = New-AzStorageContext -StorageAccountName $StorageAccountName -SasToken $StorageAccountSasToken
 $null = Set-AzStorageBlobContent -File "./fileHashes.json" -Container $StorageAccountContainerName -Context $storageContext -Force
-

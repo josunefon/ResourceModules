@@ -31,4 +31,5 @@ jobs:
         env:
           STG_SAS_TOKEN: ${{ secrets.STG_SAS_TOKEN }}
         run: |
+          Install-Module -Name Az.Storage
           ./hackaton/azure/Publish-VersionHash.ps1 -ReleaseTag "${{inputs.ReleaseTag}}" -StorageAccountName "${{inputs.StorageAccountName}}" -StorageAccountContainerName "${{inputs.StorageAccountContainerName}}" -StorageAccountSasToken "${{ env.STG_SAS_TOKEN }}"
