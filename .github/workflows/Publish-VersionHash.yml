@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v2
         
       - name: Run Publish-VersionHash.ps1
+        shell: pwsh
         env:
           STG_SAS_TOKEN: ${{ secrets.STG_SAS_TOKEN }}
         run: |
