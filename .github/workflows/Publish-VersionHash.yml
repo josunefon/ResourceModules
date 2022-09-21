@@ -23,8 +23,9 @@ jobs:
     steps:
       - name: Check out repo        
         uses: actions/checkout@v2
-      - name: Set up secret file
+        
+      - name: Run Publish-VersionHash.ps1
         env:
           STG_SAS_TOKEN: ${{ secrets.STG_SAS_TOKEN }}
-      - run: |
+        run: |
           ./hackaton/azure/Publish-VersionHash.ps1 -ReleaseTag "${{inputs.ReleaseTag}}" -StorageAccountName "${{inputs.StorageAccountName}}" -StorageAccountContainerName "${{inputs.StorageAccountContainerName}}" -StorageAccountSasToken ${{ secrets.STG_SAS_TOKEN }}
