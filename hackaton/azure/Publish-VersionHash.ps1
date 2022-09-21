@@ -150,9 +150,6 @@ foreach ($release in $response) {
     $existingHashes | Add-Member "$($release.tag_name)" -Type "NoteProperty" -Value $moduleHashes
     "$PSScriptRoot/fileHashes.json"
     $existingHashes | ConvertTo-Json -Depth 100 | Out-File "$PSScriptRoot/fileHashes.json"
-
-    $PSScriptRoot
-    Get-Location
 }
 # cleanup
 Set-Location $PSScriptRoot
