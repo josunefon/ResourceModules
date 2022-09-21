@@ -73,6 +73,7 @@ foreach ($release in $response) {
     $moduleHashes = @{}
 
     $totalModuleCount = $filter.Count
+    $count = 0
 
     foreach ($module in $filter) {
         $count++
