@@ -101,7 +101,7 @@ foreach ($release in $response) {
     $totalModuleCount = $filter.Count
     $count = 0
 
-    foreach ($module in $filter[1..10]) {
+    foreach ($module in $filter) {
         $count++
 
         # the newer CARML versions have constructs in addition to modules, we will not include those
