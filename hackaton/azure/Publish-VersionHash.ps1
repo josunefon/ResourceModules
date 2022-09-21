@@ -56,8 +56,8 @@ if (!(Get-Content -Path "$PSScriptRoot/fileHashes.json")) {
     Add-Content -Path "$PSScriptRoot/fileHashes.json" -Value "{}"
 }
 
-$null = New-Item "$PSScriptRoot/Publish-VersionHash-temp" -ItemType Directory
-Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
+$null = New-Item "./Publish-VersionHash-temp" -ItemType Directory
+Set-Location "./Publish-VersionHash-temp"
 
 Write-Verbose "Get GitHub release info" -Verbose
 $response = Invoke-RestMethod -Method GET -Uri https://api.github.com/repos/Azure/ResourceModules/releases
@@ -154,11 +154,11 @@ foreach ($release in $response[1..10]) {
     "$PSScriptRoot/fileHashes.json"
     $existingHashes | ConvertTo-Json -Depth 100 | Out-File "$PSScriptRoot/fileHashes.json"
 
-    Set-Location "$PSScriptRoot/hackaton/azure/Publish-VersionHash-temp"
+    Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
 }
 # cleanup
 Set-Location $PSScriptRoot
-Remove-Item "$PSScriptRoot/hackaton/azure/Publish-VersionHash-temp" -Recurse -Force
+Remove-Item "$PSScriptRoot/Publish-VersionHash-temp" -Recurse -Force
 
 # upload the local json file back to the storage account. The file on the storage account will be overwritten
 Write-Verbose "Upload file to blob storage" -Verbose
