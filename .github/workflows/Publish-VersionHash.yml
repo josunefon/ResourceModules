@@ -1,4 +1,4 @@
-name: test
+name: Publish-VersionHash
 on:
   workflow_dispatch:
     inputs:
