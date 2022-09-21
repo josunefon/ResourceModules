@@ -75,6 +75,8 @@ else {
 
 foreach ($release in $response[1..10]) {
 
+    ls
+    $PSScriptRoot
     # load the hash file
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
