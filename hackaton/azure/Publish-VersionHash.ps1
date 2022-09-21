@@ -17,7 +17,7 @@ $ErrorActionPreference = "Stop"
 
 $storageUri = "https://$StorageAccountName.blob.core.windows.net/$StorageAccountContainerName/fileHashes.json?$StorageAccountSasToken"
 
-Import-Module ./module-tracker.psm1
+Import-Module ./hackaton/azure/module-tracker.psm1
 
 Write-Verbose "Trying to download existing hash file" -Verbose
 if (Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "fileHashes.json" -Force) {
