@@ -41,11 +41,13 @@ $storageUri = "https://$StorageAccountName.blob.core.windows.net/$StorageAccount
 Import-Module ./hackaton/azure/module-tracker.psm1
 
 Write-Verbose "Trying to download existing hash file" -Verbose
-if (Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoot/fileHashes.json" -Force) {
+try {
+    $null = Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoot/fileHashes.json" -Force
+}
+catch {
     Write-Error "Was not able to find file 'fileHashes.json' on storage account '$StorageAccountName' in container '$StorageAccountContainerName'"
 }
-$null = Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoot/fileHashes.json" -Force
-
+    
 Write-Verbose "Creating folder structure" -Verbose
 if (!(Get-ChildItem -Path "$PSScriptRoot/fileHashes.json" -Erroraction SilentlyContinue)) {
     $null = New-Item -Path "$PSScriptRoot/fileHashes.json"
