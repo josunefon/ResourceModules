@@ -76,6 +76,8 @@ else {
 foreach ($release in $response[1..10]) {
 
     # load the hash file
+    ls
+    $PSScriptRoot
     $existingHashes = Get-Content -Path "$PSScriptRoot/fileHashes.json" | ConvertFrom-Json
 
     # if an existing release tag has been detected in the loaded file, the script will skip that release
