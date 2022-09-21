@@ -53,19 +53,40 @@ Param (
     [Switch] $noResourceGroupsLevelTracking
 )
 
+#region Importing modules
+Remove-Module -Name module-tracker -Force -ErrorAction SilentlyContinue
 Import-Module -Name ./module-tracker.psm1
 
-if($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true -and $noResourceGroupsLevelTracking -eq $true)
-{
-    Write-Output "Please remove the flags for tracking purposes."
-}else{
+if (Get-Module | Where-Object { $_.Name -eq 'AzTable' }) {
+    Write-Host 'Module AzTable is already imported.'
+} else {
+    # If module is not imported, but available on disk then import
+    if (Get-Module -ListAvailable | Where-Object { $_.Name -eq 'AzTable' }) {
+        Import-Module 'AzTable' -Verbose
+    } else {
+        # If module is not imported, not available on disk, but is in online gallery then install and import
+        if (Find-Module -Name 'AzTable' | Where-Object { $_.Name -eq 'AzTable' }) {
+            Install-Module -Name 'AzTable' -Force -Verbose -Scope CurrentUser -Repository PSGallery
+            Import-Module 'AzTable' -Verbose
+        } else {
+            # If the module is not imported, not available and not in the online gallery then abort
+            Write-Host 'Module AzTable not imported, not available and not in an online gallery, exiting.'
+            EXIT 1
+        }
+    }
+}
+#endregion
+
+if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true -and $noResourceGroupsLevelTracking -eq $true) {
+    Write-Output 'Please remove the flags for tracking purposes.'
+} else {
     #region Create the Storage Table
     Select-AzSubscription -SubscriptionId $storageSubscriptionId
     $tableObject = New-StorageAccountTable -StorageAccountName $storageAccount -ResourceGroup $resourceGroup -TableName 'AzureDeployments'
     #endregion
 
     #region Getting all Tenant deployments
-    if($noTenantLevelTracking -eq $false){
+    if ($noTenantLevelTracking -eq $false) {
         $StartTime = $(Get-Date)
 
         $processedDeployments = 0
@@ -86,20 +107,22 @@ if($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true
         $elapsedTime = $(Get-Date) - $StartTime
         $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
 
-        Write-Output 'Processed Tenant deployments: ' + $processedDeployments 'Time spent '+$totalTime ''
-    }else{
-        Write-Output "Tenant level tracking is disabled by selected flags"
+        Write-Output "Processed Tenant deployments: $($processedDeployments), Time spent $($totalTime)"
+    } else {
+        Write-Output 'Tenant level tracking is disabled by selected flags'
     }
     #endregion
 
     #region Getting all Subscriptions deployments
-    if($noSubscriptionsLevelTracking -eq $false){
+    if ($noSubscriptionsLevelTracking -eq $false) {
         $StartTime = $(Get-Date)
-        $subscriptions = Get-AzSubscription
+        #$subscriptions = Get-AzSubscription
+        $subscriptions = @('ed29c799-3b06-4306-971a-202c3c2d29a9', 'ad17e0fd-d65e-4c34-9c69-aeb86ae4c671')
         $tableRows = @()
 
         foreach ($sub in $subscriptions) {
-            Select-AzSubscription -SubscriptionId $sub.Id
+            #Select-AzSubscription -SubscriptionId $sub.Id
+            Select-AzSubscription -SubscriptionId $sub
 
             $processedDeployments = 0
             try {
@@ -123,25 +146,30 @@ if($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true
         }
         Select-AzSubscription -SubscriptionId $storageSubscriptionId
         foreach ($row in $tableRows) {
-            New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash
+            if (($row.hash).Length -ne 0) {
+                New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash
+            } else {
+                Write-Output "Hash is null for $($row.deploymentName)"
+            }
         }
         $elapsedTime = $(Get-Date) - $StartTime
         $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
 
-        Write-Output 'Processed Subscriptions deployments: ' + $processedDeployments 'Time spent '+$totalTime ''
-    }else{
-        Write-Output "Subscriptions level tracking is disabled by selected flags"
+        Write-Output "Processed Subscriptions deployments: $($processedDeployments), Time spent $($totalTime)"
+    } else {
+        Write-Output 'Subscriptions level tracking is disabled by selected flags'
     }
     #endregion
 
     #region Getting all Resource Group deployments per each Subscription
-    if($noResourceGroupsLevelTracking -eq $false){
+    if ($noResourceGroupsLevelTracking -eq $false) {
         $StartTime = $(Get-Date)
         $tableRows = @()
 
         foreach ($sub in $subscriptions) {
-            Select-AzSubscription -SubscriptionId $sub.Id
-            $resourceGroups = Get-AzResourceGroup
+            #Select-AzSubscription -SubscriptionId $sub.Id
+            #$resourceGroups = Get-AzResourceGroup
+            Select-AzSubscription -SubscriptionId $sub
 
             $processedDeployments = 0
             foreach ($rg in $resourceGroups) {
@@ -177,9 +205,9 @@ if($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true
         $elapsedTime = $(Get-Date) - $StartTime
         $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
 
-        Write-Output 'Processed Resource Group deployments: ' + $processedDeployments 'Time spent '+$totalTime ''
-    }else{
-        Write-Output "Resource Groups level tracking is disabled by selected flags"
+        Write-Output "Processed Resource Groups deployments: $($processedDeployments), Time spent $($totalTime)"
+    } else {
+        Write-Output 'Resource Groups level tracking is disabled by selected flags'
     }
     #endregion
 }

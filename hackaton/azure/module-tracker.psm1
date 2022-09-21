@@ -16,7 +16,7 @@ Get-TemplateHash -TemplatePath .\deploy.json
 function Get-TemplateHash {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $TemplatePath
     )
 
@@ -79,13 +79,13 @@ New-StorageAccountTable -StorageAccountName 'stgstore01' -ResourceGroup 'data-rg
 function New-StorageAccountTable {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $StorageAccountName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $ResourceGroup,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $TableName
     )
 
@@ -95,20 +95,16 @@ function New-StorageAccountTable {
         $ctx = $storageAccount.Context
 
         # create the table
-        New-AzStorageTable -Name $TableName -Context $ctx | Out-Null
-        $table = (Get-AzStorageTable -Name $TableName -Context $ctx).CloudTable
-
-        Write-Output "Table created successfully"
-
+        $table = (Get-AzStorageTable -Name $TableName -Context $ctx -ErrorAction SilentlyContinue).CloudTable
+        if($table -eq $null){
+            $table = New-AzStorageTable -Name $TableName -Context $ctx | Out-Null
+            Write-Output "Table created successfully"
+        }else {
+            Write-Output "Table $($TableName) already exists"
+        }
         return $table
     } catch {
-        # get storage Account and context
-        $storageAccount = Get-AzStorageAccount -Name $StorageAccountName -ResourceGroupName $ResourceGroup
-        $ctx = $storageAccount.Context
-        $table = (Get-AzStorageTable -Name $TableName -Context $ctx).CloudTable
-        return $table
-
-        Write-Output "Table already exists"
+        throw $_
     }
 }
 
@@ -139,16 +135,16 @@ New-StorageAccountTableRow -Table $table -PartitionKey '/subscriptions/00000000-
 function New-StorageAccountTableRow {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
-        [string] $Table,
+        [Parameter(Mandatory = $true)]
+        [object] $Table,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $PartitionKey,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $DeploymentName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $Hash
     )
 
