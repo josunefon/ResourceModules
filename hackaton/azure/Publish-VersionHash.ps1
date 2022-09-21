@@ -72,7 +72,10 @@ foreach ($release in $response) {
     $null = New-Item "../Azure-ResourceModules-ARM" -ItemType Directory
     $moduleHashes = @{}
 
+    $totalModuleCount = $filter.Count
+
     foreach ($module in $filter) {
+        $count++
 
         if ($module.FullName -match 'constructs') {
             Write-Verbose "Detected construct. Skipping..." -Verbose
@@ -83,7 +86,7 @@ foreach ($release in $response) {
         $path = ("Microsoft." + $splitPath[-1]).split("\deploy.bicep")[0].replace("\", "/")
         $jsonPath = $path.Replace("/", "-")
 
-        Write-Verbose "[$($release.tag_name)] - Building '$path'.." -Verbose
+        Write-Verbose "[$($release.tag_name)] - [$count/$totalModuleCount] - Building '$path'.." -Verbose
         if (Get-Content "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
             Write-Verbose "ARM file already exists. Skipping" -Verbose
             continue
