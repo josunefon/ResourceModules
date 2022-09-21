@@ -25,11 +25,15 @@ jobs:
     steps:
       - name: Check out repo        
         uses: actions/checkout@v2
+
+      - name: Install Az.Storage
+        shell: pwsh
+        run: |
+          Install-Module -Name Az.Storage -Force
         
       - name: Run Publish-VersionHash.ps1
         shell: pwsh
         env:
           STG_SAS_TOKEN: ${{ secrets.STG_SAS_TOKEN }}
         run: |
-          Install-Module -Name Az.Storage -Force
           ./hackaton/azure/Publish-VersionHash.ps1 -ReleaseTag "${{inputs.ReleaseTag}}" -StorageAccountName "${{inputs.StorageAccountName}}" -StorageAccountContainerName "${{inputs.StorageAccountContainerName}}" -StorageAccountSasToken "${{ env.STG_SAS_TOKEN }}"
