@@ -47,15 +47,15 @@ if (Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoo
 $null = Get-AzStorageBlobContent -AbsoluteUri $storageUri -Destination "$PSScriptRoot/fileHashes.json" -Force
 
 Write-Verbose "Creating folder structure" -Verbose
-if (!(Get-ChildItem -Path "fileHashes.json" -Erroraction SilentlyContinue)) {
-    $null = New-Item -Path "fileHashes.json"
+if (!(Get-ChildItem -Path "$PSScriptRoot/fileHashes.json" -Erroraction SilentlyContinue)) {
+    $null = New-Item -Path "$PSScriptRoot/fileHashes.json"
 }
-if (!(Get-Content -Path "fileHashes.json")) {
-    Add-Content -Path "fileHashes.json" -Value "{}"
+if (!(Get-Content -Path "$PSScriptRoot/fileHashes.json")) {
+    Add-Content -Path "$PSScriptRoot/fileHashes.json" -Value "{}"
 }
 
-$null = New-Item "Publish-VersionHash-temp" -ItemType Directory
-Set-Location "./Publish-VersionHash-temp"
+$null = New-Item "$PSScriptRoot/Publish-VersionHash-temp" -ItemType Directory
+Set-Location "$PSScriptRoot/Publish-VersionHash-temp"
 
 Write-Verbose "Get GitHub release info" -Verbose
 $response = Invoke-RestMethod -Method GET -Uri https://api.github.com/repos/Azure/ResourceModules/releases
