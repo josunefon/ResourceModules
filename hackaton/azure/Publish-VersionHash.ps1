@@ -141,6 +141,10 @@ foreach ($release in $response) {
 
         # add the full modulename and the hash to the existing hashtable 
         $moduleHashes.Add($path, $encodedText)
+        "------------------------"
+        Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
+        "------------------------"
+        $encodedText
     }
 
     Write-Verbose "Trying to read 'fileHashes.json'" -Verbose
