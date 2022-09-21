@@ -1,0 +1,31 @@
+name: test
+on:
+  workflow_dispatch:
+    inputs:
+        ReleaseTag:
+          type: string
+          description: Release tag you want to scan for.
+          required: false
+          
+        StorageAccountName:
+          type: string
+          description: Name of the storage account where the hash file will be stored in.
+          required: true
+          
+        StorageAccountContainerName:
+          type: string
+          description: Name of the storage container where the hash file will be stored in.
+          required: true
+          
+jobs:
+  build:
+    runs-on: windows-2019
+    steps:
+      - name: Check out repo        
+        uses: actions/checkout@v2
+        
+      - name: Run Publish-VersionHash.ps1
+        env:
+          STG_SAS_TOKEN: ${{ secrets.STG_SAS_TOKEN }}
+        run: |
+          ./hackaton/azure/Publish-VersionHash.ps1 -ReleaseTag "${{inputs.ReleaseTag}}" -StorageAccountName "${{inputs.StorageAccountName}}" -StorageAccountContainerName "${{inputs.StorageAccountContainerName}}" -StorageAccountSasToken ${{ env.STG_SAS_TOKEN }}
