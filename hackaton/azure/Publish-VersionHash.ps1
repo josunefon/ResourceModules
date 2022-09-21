@@ -73,7 +73,7 @@ else {
     Write-Verbose "No specific release tag has been provided, processing all available releases." -Verbose
 }
 
-foreach ($release in $response[1..10]) {
+foreach ($release in $response) {
 
     ls
     $PSScriptRoot
@@ -104,7 +104,7 @@ foreach ($release in $response[1..10]) {
     $totalModuleCount = $filter.Count
     $count = 0
 
-    foreach ($module in $filter) {
+    foreach ($module in $filter[1..10]) {
         $count++
 
         # the newer CARML versions have constructs in addition to modules, we will not include those
