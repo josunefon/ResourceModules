@@ -88,7 +88,7 @@ foreach ($release in $response) {
             Write-Verbose "ARM file already exists. Skipping" -Verbose
             continue
         }
-        az bicep build --file $module.FullName --outfile "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" --no-restore
+        az bicep build --file $module.FullName --outfile "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" --no-restore --only-show-errors
         if (Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
             $encodedText = Get-TemplateHash -TemplatePath "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
         }
