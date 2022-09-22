@@ -21,7 +21,7 @@ on:
 
 jobs:
   deploy_dashboard:
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
     name: "Module tracker Backend"
     steps:
       - name: "Checkout"
