@@ -3,17 +3,26 @@
     This script will create a filehash from all modules that are within CARML and upload the result to a storage account. 
 .DESCRIPTION
     This script will use a json file to store the hashes. It can update that file as well. The json file has to be located on a storage account.
-    The script only works with a release package from GitHub. 
-    Changes in between releases are not tracked.
+    This script will download either a specified CARML release or all of them and compile all bicep modules to ARM.
+    It will use another module to strip the json file and create a hash for it.
+    The hash is then stored in a file and uploaded back to the storage account.
 .PARAMETER ReleaseTag
-
+    Tag (NOT the name) of the CARML GitHub release. 
 .PARAMETER StorageAccountName
-
+    Name (NOT the URL) of the storage account which will house the hash-file.
 .PARAMETER StorageAccountContainerName
-
+    Name of the container within the storage account which will house the hash-file.
 .PARAMETER StorageAccountSasToken
-
+    SAS-Token with read and write access to the container (or blob).
 .EXAMPLE
+    .\Publish-VersionHash.ps1 `
+        -StorageAccountName "mystorage" `
+        -StorageAccountContainerName "mycontainer" `
+        -StorageAccountSasToken "<myToken>" `
+        -ReleaseTag "v0.6.0"
+.NOTES
+    - Make sure this script is run on the same agent OS as its counterpart ('./dump-template-hash.ps1'), otherwise the hashes may not be equal due to different linebreak-handling between UNIX and WINDOWS.
+    - The script only works with a release package from GitHub. Changes between releases are not tracked.
 #>
 
 
@@ -137,7 +146,7 @@ foreach ($release in $response) {
         }
         else {
             Write-Warning "File '$jsonPath-deploy.json' could not be found. Please check for compilation errors."
-            continue
+            $encodedText = "NULL"
         }
 
         # add the full modulename and the hash to the existing hashtable 
