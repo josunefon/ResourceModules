@@ -7,7 +7,12 @@ on:
         type: string
         description: "Resource Group where infrastructure will be deployed/updated"
         required: true
-        default: ""
+        default: "storageTableHackResourceGroup"
+      functionAppName:
+        type: string
+        description: "Function App where code will be deployed/updated"
+        required: true
+        default: "hacktrack22-fa"
 
 jobs:
   deploy_dashboard:
@@ -24,32 +29,21 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS_JS_SUB }}
           enable-AzPSSession: true
       - name: "Deploy infrastructure"
-        id: Function
+        id: infratracker
         uses: azure/arm-deploy@v1
         with:
-          deploymentName: ${{ github.event.inputs.resourceGroupName }}
+          scope: resourceGroup
           resourceGroupName: ${{ github.event.inputs.resourceGroupName }}
-          template: ./modules/Microsoft.Web/sites/deploy.bicep
-          parameters: ./modules/Microsoft.Web/sites/parameters.json
-      - name: "Deploy infrastructure"
-        id: stg
-        uses: azure/arm-deploy@v1
-        with:
-          deploymentName: ${{ github.event.inputs.resourceGroupName }}
-          resourceGroupName: ${{ github.event.inputs.resourceGroupName }}
-          template: ./modules/Microsoft.Storage/storageAccounts/deploy.bicep
-          parameters: ./modules/Microsoft.Web/sites/parameters.json
+          template: ./hackaton/azure/infra.bicep
       - name: "Deploy code"
         shell: pwsh
         run: |
           # Initialize parameters
           Install-Module -Name Az.Functions -Force
-          $functionApp = Get-AzFunctionApp -ResourceGroupName '${{ github.event.inputs.resourceGroupName }}'
-          $functionAppName = $functionApp[0].Name
-          $DeployFunctionInputs = @{
-              ResourceGroup      = '${{ github.event.inputs.resourceGroupName }}'
-              FunctionAppName    = $functionAppName
-              Dashboard          = 'GitHub'
-          }
-          # Invoke Function
-          ./tools/scripts/deploy-function.ps1 @DeployFunctionInputs -Verbose
+          # Create a Zip with the publish result
+          Remove-Item -Path ./hackaton/azure/infra.bicep
+          $publishFolder = "hackaton/azure"
+          $publishZip = "publish.zip"
+          Add-Type -assembly "system.io.compression.filesystem"
+          [io.compression.zipfile]::CreateFromDirectory($publishFolder, $publishZip)
+          az functionapp deployment source config-zip -g ${{ github.event.inputs.resourceGroupName }} -n ${{ github.event.inputs.functionAppName }} --src $publishZip
