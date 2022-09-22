@@ -46,32 +46,6 @@ function Invoke-StorageAccountDataAdd {
     }
 }
 
-function Invoke-LoadModule ($m) {
-
-    # If module is imported say that and do nothing
-    if (Get-Module | Where-Object { $_.Name -eq $m }) {
-        Write-Host "[Preparation] Module $m is already imported."
-    } else {
-
-        # If module is not imported, but available on disk then import
-        if (Get-Module -ListAvailable | Where-Object { $_.Name -eq $m }) {
-            Import-Module $m -Verbose
-        } else {
-
-            # If module is not imported, not available on disk, but is in online gallery then install and import
-            if (Find-Module -Name $m | Where-Object { $_.Name -eq $m }) {
-                Install-Module -Name $m -Force -Verbose -Scope CurrentUser
-                Import-Module $m -Verbose
-            } else {
-
-                # If the module is not imported, not available and not in the online gallery then abort
-                Write-Host "[Preparation] Module $m not imported, not available and not in an online gallery, exiting."
-                EXIT 1
-            }
-        }
-    }
-}
-
 #endregion
 
 #region Init
@@ -81,9 +55,17 @@ Write-Host '[Preparation] Reading script parameters from env variables' -Verbose
 $storageAccountName = $env:storageAccountName
 $storageAccountResourceGroup = $env:storageAccountResourceGroup
 $storageAccountSubscriptionId = $env:storageAccountSubscriptionId
-$noTenantLevelTracking = $env:noTenantLevelTracking
-$noSubscriptionsLevelTracking = $env:noSubscriptionsLevelTracking
-$noResourceGroupsLevelTracking = $env:noResourceGroupsLevelTracking
+$noTenantLevelTracking = [System.Convert]::ToBoolean($env:noTenantLevelTrackingString)
+$noSubscriptionsLevelTracking = [System.Convert]::ToBoolean($env:noSubscriptionsLevelTracking)
+$noResourceGroupsLevelTracking = [System.Convert]::ToBoolean($env:noResourceGroupsLevelTracking)
+
+Write-Host '[Preparation] Parameters:' -Verbose
+Write-Host "[Preparation]  - storageAccountName: $storageAccountName" -Verbose
+Write-Host "[Preparation]  - storageAccountResourceGroup: $storageAccountResourceGroup" -Verbose
+Write-Host "[Preparation]  - storageAccountSubscriptionId: $noTenantLevelTracking" -Verbose
+Write-Host "[Preparation]  - noTenantLevelTracking: $noTenantLevelTracking" -Verbose
+Write-Host "[Preparation]  - noSubscriptionsLevelTracking: $noSubscriptionsLevelTracking" -Verbose
+Write-Host "[Preparation]  - noResourceGroupsLevelTracking: $noResourceGroupsLevelTracking" -Verbose
 
 if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $true -and $noResourceGroupsLevelTracking -eq $true) {
     Write-Host '[Preparation] Please set the flags for tracking purposes. Exiting...' -Verbose
@@ -96,8 +78,7 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
 
 Write-Host '[Preparation] Loading modules' -Verbose
 
-Invoke-LoadModule 'AzTable'
-Import-Module -Name ./module-tracker.psm1
+Import-Module module-tracker
 
 #endregion
 
@@ -105,8 +86,12 @@ Import-Module -Name ./module-tracker.psm1
 
 Write-Host '[Preparation] Creating/retrieving storage account table object' -Verbose
 Select-AzSubscription -SubscriptionId $storageAccountSubscriptionId -WarningAction SilentlyContinue | Out-Null
-$tableObject = New-StorageAccountTable -StorageAccountName $storageAccountName -ResourceGroup $storageAccountResourceGroup -TableName 'AzureDeployments1'
+$tableObject = New-StorageAccountTable -StorageAccountName $storageAccountName -ResourceGroup $storageAccountResourceGroup -TableName 'AzureDeployments'
 
+if (-not $tableObject) {
+    Write-Host '[Preparation] storage account table object not available!' -Verbose
+    return;
+}
 #endregion
 
 #region Getting all Tenant deployments
@@ -135,7 +120,9 @@ if ($noTenantLevelTracking -eq $false) {
         Write-Output "Error: $($_.Exception.Message)"
         continue
     }
-    Invoke-StorageAccountDataAdd -StorageAccountSubscriptionId $storageAccountSubscriptionId -TableObject $tableObject -TableRows $tableRows -Scope 'tenant'
+    if ($tableRows.Count -gt 0) {
+        Invoke-StorageAccountDataAdd -StorageAccountSubscriptionId $storageAccountSubscriptionId -TableObject $tableObject -TableRows $tableRows -Scope 'tenant'
+    }
     $elapsedTime = $(Get-Date) - $StartTime
     $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
     Write-Host "[Processing tenant] Done, Time spent $($totalTime)" -Verbose
@@ -184,7 +171,9 @@ if ($noSubscriptionsLevelTracking -eq $false) {
         }
         break
     }
-    Invoke-StorageAccountDataAdd -StorageAccountSubscriptionId $storageAccountSubscriptionId -TableObject $tableObject -TableRows $tableRows -Scope 'subscription'
+    if ($tableRows.Count -gt 0) {
+        Invoke-StorageAccountDataAdd -StorageAccountSubscriptionId $storageAccountSubscriptionId -TableObject $tableObject -TableRows $tableRows -Scope 'subscription'
+    }
     $elapsedTime = $(Get-Date) - $StartTime
     $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
 
@@ -234,7 +223,9 @@ if ($noResourceGroupsLevelTracking -eq $false) {
             }
         }
     }
-    Invoke-StorageAccountDataAdd $storageAccountSubscriptionId, $tableObject $tableRows, 'resourceGroup'
+    if ($tableRows.Count -gt 0) {
+        Invoke-StorageAccountDataAdd -StorageAccountSubscriptionId $storageAccountSubscriptionId -TableObject $tableObject -TableRows $tableRows -Scope 'resourceGroup'
+    }
     $elapsedTime = $(Get-Date) - $StartTime
     $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)
 
@@ -243,4 +234,3 @@ if ($noResourceGroupsLevelTracking -eq $false) {
     Write-Host '[Processing resourcGroup] Resource Groups level tracking is disabled by selected flags' -Verbose
 }
 #endregion
-
