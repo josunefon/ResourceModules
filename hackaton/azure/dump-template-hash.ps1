@@ -94,9 +94,13 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
             $azDeployments = Get-AzTenantDeployment
 
             foreach ($deployment in $azDeployments) {
-                Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+                try {
+                    Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+                } catch {
+                    continue
+                }
                 $hash = Get-TemplateHash -TemplatePath "./$($deployment.DeploymentName).json"
-                New-StorageAccountTableRow -Table $tableObject -PartitionKey $deployment.Id -DeploymentName $deployment.deploymentName -Hash $hash
+                New-StorageAccountTableRow -Table $tableObject -PartitionKey $deployment.Id -DeploymentName $deployment.deploymentName -Hash $hash -Scope 'tenant'
                 Remove-Item "./$($deployment.DeploymentName).json"
                 $processedDeployments++
             }
@@ -129,7 +133,11 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
                 $azDeployments = Get-AzDeployment
 
                 foreach ($deployment in $azDeployments) {
-                    Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+                    try {
+                        Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+                    } catch {
+                        continue
+                    }
                     $hash = Get-TemplateHash -TemplatePath "./$($deployment.DeploymentName).json"
                     $tableRows += [PSCustomObject]@{
                         deploymentName = $deployment.DeploymentName
@@ -147,7 +155,7 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
         Select-AzSubscription -SubscriptionId $storageSubscriptionId
         foreach ($row in $tableRows) {
             if (($row.hash).Length -ne 0) {
-                New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash
+                New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash -Scope 'subscription'
             } else {
                 Write-Output "Hash is null for $($row.deploymentName)"
             }
@@ -164,27 +172,32 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
     #region Getting all Resource Group deployments per each Subscription
     if ($noResourceGroupsLevelTracking -eq $false) {
         $StartTime = $(Get-Date)
+        $subscriptions = @('ed29c799-3b06-4306-971a-202c3c2d29a9', 'ad17e0fd-d65e-4c34-9c69-aeb86ae4c671')
         $tableRows = @()
 
         foreach ($sub in $subscriptions) {
             #Select-AzSubscription -SubscriptionId $sub.Id
-            #$resourceGroups = Get-AzResourceGroup
+            $resourceGroups = Get-AzResourceGroup
             Select-AzSubscription -SubscriptionId $sub
 
             $processedDeployments = 0
             foreach ($rg in $resourceGroups) {
                 try {
-                    $azDeployments = Get-AzResourceGroupDeployment
+                    $azDeployments = Get-AzResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName
 
                     foreach ($deployment in $azDeployments) {
                         #exporting the deployment template object
-                        Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+                        try {
+                            Save-AzResourceGroupDeploymentTemplate -ResourceGroupName $rg.ResourceGroupName -DeploymentName $deployment.DeploymentName -Force -ErrorAction Stop | Out-Null
+                        } catch {
+                            continue
+                        }
                         #Generating hash value
                         $hash = Get-TemplateHash -TemplatePath "./$($deployment.DeploymentName).json"
                         #Adding results to object
                         $tableRows += [PSCustomObject]@{
                             deploymentName = $deployment.DeploymentName
-                            deploymentId   = $rg
+                            deploymentId   = $rg.ResourceId
                             hash           = $hash
                         }
                         #Removing temporal json file
@@ -197,10 +210,9 @@ if ($noTenantLevelTracking -eq $true -and $noSubscriptionsLevelTracking -eq $tru
                 }
             }
         }
-
         Select-AzSubscription -SubscriptionId $storageSubscriptionId
         foreach ($row in $tableRows) {
-            New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash
+            New-StorageAccountTableRow -Table $tableObject -PartitionKey $row.deploymentId -DeploymentName $row.deploymentName -Hash $row.hash -Scope 'resourceGroup'
         }
         $elapsedTime = $(Get-Date) - $StartTime
         $totalTime = '{0:HH:mm:ss}' -f ([datetime]$elapsedTime.Ticks)

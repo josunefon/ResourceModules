@@ -96,11 +96,9 @@ function New-StorageAccountTable {
 
         # create the table
         $table = (Get-AzStorageTable -Name $TableName -Context $ctx -ErrorAction SilentlyContinue).CloudTable
-        if($table -eq $null){
-            $table = New-AzStorageTable -Name $TableName -Context $ctx | Out-Null
-            Write-Output "Table created successfully"
-        }else {
-            Write-Output "Table $($TableName) already exists"
+        if ($null -eq $table) {
+            $newTable = New-AzStorageTable -Name $TableName -Context $ctx
+            return $newTable.CloudTable
         }
         return $table
     } catch {
@@ -145,12 +143,15 @@ function New-StorageAccountTableRow {
         [string] $DeploymentName,
 
         [Parameter(Mandatory = $true)]
-        [string] $Hash
+        [string] $Hash,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Scope
     )
 
     try {
-        $extractionDate = Get-Date -Format 'yyyy-mm-dd hh:mm:ss'
-        Add-AzTableRow -table $Table -partitionKey $PartitionKey -rowKey $DeploymentName -property @{'Hash' = $Hash; 'Time' = $extractionDate } -UpdateExisting | Out-Null
+        $PartitionKey = $PartitionKey.Replace('/', '.')
+        Add-AzTableRow -Table $Table -PartitionKey $PartitionKey -RowKey $DeploymentName -property @{'Hash' = $Hash; 'Scope' = $Scope } -UpdateExisting | Out-Null
     } catch {
         throw $_
     }
