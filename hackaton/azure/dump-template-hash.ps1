@@ -106,7 +106,11 @@ if ($noTenantLevelTracking -eq $false) {
         Write-Host "[Processing tenant] Processing $($azDeployments.Count) deployments" -Verbose
 
         foreach ($deployment in $azDeployments) {
-            Save-AzDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+            try {
+                Save-AzTenantDeploymentTemplate -DeploymentName $deployment.DeploymentName -Force | Out-Null
+            } catch {
+                continue
+            }
             $hash = Get-TemplateHash -TemplatePath "./$($deployment.DeploymentName).json"
             $tableRows += [PSCustomObject]@{
                 deploymentName = $deployment.DeploymentName
@@ -202,12 +206,17 @@ if ($noResourceGroupsLevelTracking -eq $false) {
         $rgCount = 0
         foreach ($rg in $resourceGroups) {
             try {
+                $rgCount++
                 Write-Host "[Processing resourceGroup] Processing resoucre group $rgCount/$($resourceGroups.Count)" -Verbose
                 $azDeployments = Get-AzResourceGroupDeployment -ResourceGroupName $rg.ResourceGroupName
                 Write-Host "[Processing resourceGroup] Processing $($azDeployments.Count) deployments" -Verbose
 
                 foreach ($deployment in $azDeployments) {
-                    Save-AzResourceGroupDeploymentTemplate -ResourceGroupName $rg.ResourceGroupName -DeploymentName $deployment.DeploymentName -Force -ErrorAction Stop | Out-Null
+                    try {
+                        Save-AzResourceGroupDeploymentTemplate -ResourceGroupName $rg.ResourceGroupName -DeploymentName $deployment.DeploymentName -Force -ErrorAction Stop | Out-Null
+                    } catch {
+                        continue
+                    }
                     $hash = Get-TemplateHash -TemplatePath "./$($deployment.DeploymentName).json"
                     $tableRows += [PSCustomObject]@{
                         deploymentName = $deployment.DeploymentName
