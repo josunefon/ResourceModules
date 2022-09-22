@@ -89,7 +89,7 @@ foreach ($release in $response) {
     Set-Location "$PSScriptRoot/$($release.tag_name)/Azure-ResourceModules-*/"
 
     Write-Verbose "Get all bicep files" -Verbose
-    $filter = Get-ChildItem -Recurse -Filter "deploy.bicep"
+    $filter = Get-ChildItem -Recurse -Filter "deploy.bicep" | Sort-Object
 
     Write-Verbose "Create folder to store compiled ARM templates and respective hashes" -Verbose
     $null = New-Item "../Azure-ResourceModules-ARM" -ItemType Directory
@@ -114,7 +114,7 @@ foreach ($release in $response) {
         # split the full file path on a spot that is always the same
         $splitPath = ($module.FullName).split("Microsoft.")
 
-        # add the splitted-off "Microsoft." back in and remove the "\deploy.bicep" from the end to get the full name of the module
+        # add the splitted-off "Microsoft." back in and remove the "deploy.bicep" from the end to get the full name of the module
         $path = ("Microsoft." + $splitPath[-1]).split("deploy.bicep")[0].Trim("/")
 
         # since "\" are no good in file names we replace them with a "-" to receive the full name of the comipled ARM-json file
@@ -142,15 +142,6 @@ foreach ($release in $response) {
 
         # add the full modulename and the hash to the existing hashtable 
         $moduleHashes.Add($path, $encodedText)
-
-        if ($path -eq "Microsoft.Resources/resourceGroups") {
-            <# Action to perform if the condition is true #>
-        
-            "------------------------"
-            Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
-            "------------------------"
-            $encodedText
-        }
     }
 
     Write-Verbose "Trying to read 'fileHashes.json'" -Verbose
