@@ -122,6 +122,8 @@ foreach ($release in $response) {
 
         Write-Verbose "[$($release.tag_name)] - [$count/$totalModuleCount] - Building '$path'.." -Verbose
 
+        if ($path -eq "Microsoft.Resources/resourceGroups") {
+
         # if the file was compiled before, skip the compilation process
         if (Get-Content "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
             Write-Verbose "ARM file already exists. Skipping" -Verbose
@@ -142,6 +144,14 @@ foreach ($release in $response) {
 
         # add the full modulename and the hash to the existing hashtable 
         $moduleHashes.Add($path, $encodedText)
+
+            <# Action to perform if the condition is true #>
+        
+            "------------------------"
+            Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
+            "------------------------"
+            $encodedText
+        }
     }
 
     Write-Verbose "Trying to read 'fileHashes.json'" -Verbose
