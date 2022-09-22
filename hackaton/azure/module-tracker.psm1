@@ -16,7 +16,7 @@ Get-TemplateHash -TemplatePath .\deploy.json
 function Get-TemplateHash {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $TemplatePath
     )
 
@@ -33,10 +33,10 @@ function Get-TemplateHash {
                 $templateContent.PSObject.Properties.Remove($property.Name)
             }
         }
-        # rrder resources properties alphabetically
+        # reorder resources properties alphabetically
         $templateContent.resources = $templateContent.resources | Select-Object ($templateContent.resources | Get-Member -MemberType NoteProperty).Name
 
-        # create temp file and esport
+        # create temp file and export
         $tmpPath = Join-Path $PSScriptRoot ('HASH-{0}.json' -f (New-Guid))
         $templateContent | ConvertTo-Json -Depth 100 | Out-File $tmpPath
 
@@ -79,13 +79,13 @@ New-StorageAccountTable -StorageAccountName 'stgstore01' -ResourceGroup 'data-rg
 function New-StorageAccountTable {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $StorageAccountName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $ResourceGroup,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $TableName
     )
 
@@ -95,20 +95,14 @@ function New-StorageAccountTable {
         $ctx = $storageAccount.Context
 
         # create the table
-        New-AzStorageTable -Name $TableName -Context $ctx | Out-Null
-        $table = (Get-AzStorageTable -Name $TableName -Context $ctx).CloudTable
-
-        Write-Output "Table created successfully"
-
+        $table = (Get-AzStorageTable -Name $TableName -Context $ctx -ErrorAction SilentlyContinue).CloudTable
+        if ($null -eq $table) {
+            $newTable = New-AzStorageTable -Name $TableName -Context $ctx
+            return $newTable.CloudTable
+        }
         return $table
     } catch {
-        # get storage Account and context
-        $storageAccount = Get-AzStorageAccount -Name $StorageAccountName -ResourceGroupName $ResourceGroup
-        $ctx = $storageAccount.Context
-        $table = (Get-AzStorageTable -Name $TableName -Context $ctx).CloudTable
-        return $table
-
-        Write-Output "Table already exists"
+        throw $_
     }
 }
 
@@ -139,22 +133,25 @@ New-StorageAccountTableRow -Table $table -PartitionKey '/subscriptions/00000000-
 function New-StorageAccountTableRow {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $false)]
-        [string] $Table,
+        [Parameter(Mandatory = $true)]
+        [object] $Table,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $PartitionKey,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter(Mandatory = $true)]
         [string] $DeploymentName,
 
-        [Parameter(Mandatory = $false)]
-        [string] $Hash
+        [Parameter(Mandatory = $true)]
+        [string] $Hash,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Scope
     )
 
     try {
-        $extractionDate = Get-Date -Format 'yyyy-mm-dd hh:mm:ss'
-        Add-AzTableRow -table $Table -partitionKey $PartitionKey -rowKey $DeploymentName -property @{'Hash' = $Hash; 'Time' = $extractionDate } -UpdateExisting | Out-Null
+        $PartitionKey = $PartitionKey.Replace('/', '.')
+        Add-AzTableRow -Table $Table -PartitionKey $PartitionKey -RowKey $DeploymentName -property @{'Hash' = $Hash; 'Scope' = $Scope } -UpdateExisting | Out-Null
     } catch {
         throw $_
     }
