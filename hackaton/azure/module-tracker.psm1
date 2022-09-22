@@ -39,6 +39,9 @@ function Get-TemplateHash {
         # create temp file and export
         $tmpPath = Join-Path $PSScriptRoot ('HASH-{0}.json' -f (New-Guid))
         $templateContent | ConvertTo-Json -Depth 100 | Out-File $tmpPath
+        if ($PSVersionTable.Platform -eq 'Unix') {
+            unix2dos $tmpPath
+        }
 
         # create hash
         $azHash = (Get-FileHash -Path $tmpPath -Algorithm SHA256).Hash
