@@ -26,6 +26,11 @@ jobs:
       - name: Check out repo        
         uses: actions/checkout@v2
 
+      - name: Install unix2dos
+        shell: bash
+        run: |
+          sudo apt install dos2unix
+
       - name: Install Az.Storage
         shell: pwsh
         run: |
