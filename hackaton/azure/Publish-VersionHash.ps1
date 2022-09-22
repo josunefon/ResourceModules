@@ -114,12 +114,8 @@ foreach ($release in $response) {
         # split the full file path on a spot that is always the same
         $splitPath = ($module.FullName).split("Microsoft.")
 
-        $splitPath
-
         # add the splitted-off "Microsoft." back in and remove the "\deploy.bicep" from the end to get the full name of the module
-        $path = ("Microsoft." + $splitPath[-1]).split("\deploy.bicep")[0].replace("\", "/")
-
-        $path
+        $path = ("Microsoft." + $splitPath[-1]).split("deploy.bicep")[0].Trim("/")
 
         # since "\" are no good in file names we replace them with a "-" to receive the full name of the comipled ARM-json file
         $jsonPath = $path.Replace("/", "-")
@@ -147,7 +143,7 @@ foreach ($release in $response) {
         # add the full modulename and the hash to the existing hashtable 
         $moduleHashes.Add($path, $encodedText)
 
-        if ($path -eq "Microsoft.Resources/resourceGroups/deploy.bicep") {
+        if ($path -eq "Microsoft.Resources/resourceGroups") {
             <# Action to perform if the condition is true #>
         
             "------------------------"
