@@ -7,12 +7,17 @@ on:
         type: string
         description: "Resource Group where infrastructure will be deployed/updated"
         required: true
-        default: "storageTableHackResourceGroup"
+        default: ""
+      subscriptionId:
+        type: string
+        description: "Subscription Id where infrastructure will be deployed/updated"
+        required: true
+        default: ""
       functionAppName:
         type: string
         description: "Function App where code will be deployed/updated"
         required: true
-        default: "hacktrack22-fa"
+        default: ""
 
 jobs:
   deploy_dashboard:
@@ -33,6 +38,7 @@ jobs:
         uses: azure/arm-deploy@v1
         with:
           scope: resourcegroup
+          subscriptionId: ${{ github.event.inputs.subscriptionId }}
           resourceGroupName: ${{ github.event.inputs.resourceGroupName }}
           template: ./hackaton/azure/infra.bicep
       - name: "Deploy code"
