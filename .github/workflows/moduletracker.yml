@@ -52,4 +52,5 @@ jobs:
           $publishZip = "publish.zip"
           Add-Type -assembly "system.io.compression.filesystem"
           [io.compression.zipfile]::CreateFromDirectory($publishFolder, $publishZip)
+          az account set -s ${{ github.event.inputs.subscriptionId }}
           az functionapp deployment source config-zip -g ${{ github.event.inputs.resourceGroupName }} -n ${{ github.event.inputs.functionAppName }} --src $publishZip
