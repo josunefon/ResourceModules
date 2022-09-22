@@ -4,7 +4,7 @@ targetScope = 'resourceGroup'
 param name string = 'hacktrack22'
 
 @description('Base name to be used in all resources')
-param resourceGroupName string = '${name}-rg'
+param resourceGroupName string = 'storageTableHackResourceGroup'
 
 @description('Name of the sotrage account')
 param staname string = 'hacktrack22sta'
@@ -13,15 +13,6 @@ param staname string = 'hacktrack22sta'
 param location string = 'WestEurope'
 
 var storageAccountKey = listKeys(resourceId(subscription().subscriptionId, resourceGroupName, storageAccountRef.type, storageAccountRef.name), storageAccountRef.apiVersion).keys[0].value
-
-module rg '../../modules/Microsoft.Resources/resourceGroups/deploy.bicep' = {
-  name: '${name}-rg-${deployment().name}'
-  scope: subscription()
-  params: {
-    name: resourceGroupName
-    location: location
-  }
-}
 
 module appServicePlan '../../modules/Microsoft.Web/serverfarms/deploy.bicep' = {
   name: '${name}-sp-${deployment().name}'
@@ -33,9 +24,6 @@ module appServicePlan '../../modules/Microsoft.Web/serverfarms/deploy.bicep' = {
       capacity: 1
     }
   }
-  dependsOn: [
-    rg
-  ]
 }
 
 module appService '../../modules/Microsoft.Web/sites/deploy.bicep' = {
@@ -63,7 +51,7 @@ module appService '../../modules/Microsoft.Web/sites/deploy.bicep' = {
 }
 
 module appServiceLogging '../../modules/Microsoft.Web/sites/config-appsettings/deploy.bicep' = {
-  name: '${name}-fa-${deployment().name}'
+  name: '${name}-falog-${deployment().name}'
   params: {
     appName: '${name}-fa'
     kind: 'functionapp'
@@ -105,7 +93,7 @@ module logAnalyticsWorkspace '../../modules/Microsoft.OperationalInsights/worksp
 }
 
 module appInsights '../../modules/Microsoft.Insights/components/deploy.bicep' = {
-  name: '${name}-la-${deployment().name}'
+  name: '${name}-ai-${deployment().name}'
   params: {
     name: '${name}-ai'
     location: location
@@ -122,8 +110,8 @@ module storage '../../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = 
     location: location
     roleAssignments: [
       {
-        principalId: appService.outputs.systemAssignedPrincipalId
-        roleDefinitionId: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+        principalIds: [ appService.outputs.systemAssignedPrincipalId ]
+        roleDefinitionIdOrName: 'Contributor'
       }
     ]
     allowBlobPublicAccess: true
@@ -136,9 +124,6 @@ module storage '../../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = 
       defaultAction: 'Allow'
     }
   }
-  dependsOn: [
-    rg
-  ]
 }
 
 resource storageAccountRef 'Microsoft.Storage/storageAccounts@2022-05-01' existing = {
