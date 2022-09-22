@@ -31,7 +31,7 @@ jobs:
       - name: Azure Login
         uses: Azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS_JS_SUB }}
+          creds: ${{ secrets.AZURE_CREDENTIALS_JS_MS_SUB }}
           enable-AzPSSession: true
       - name: "Deploy infrastructure"
         id: infratracker
