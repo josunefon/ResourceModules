@@ -35,13 +35,12 @@ jobs:
           enable-AzPSSession: true
       - name: "Deploy infrastructure"
         id: infratracker
-        uses: azure/arm-deploy@v1
-        with:
-          scope: resourcegroup
-          subscriptionId: ${{ github.event.inputs.subscriptionId }}
-          resourceGroupName: ${{ github.event.inputs.resourceGroupName }}
-          template: ./hackaton/azure/infra.bicep
+        shell: pwsh
+        run: |
+          az account set -s ${{ github.event.inputs.subscriptionId }}
+          az deployment group create --resource-group ${{ github.event.inputs.resourceGroupName }} --template-file ./hackaton/azure/infra.bicep
       - name: "Deploy code"
+        id: deploymentcode
         shell: pwsh
         run: |
           # Initialize parameters
