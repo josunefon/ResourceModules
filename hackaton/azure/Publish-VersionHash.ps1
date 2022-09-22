@@ -136,7 +136,8 @@ foreach ($release in $response) {
             $encodedText = Get-TemplateHash -TemplatePath "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
         }
         else {
-            Write-Warning "File '$jsonPath-deploy.json' could not be found."
+            Write-Warning "File '$jsonPath-deploy.json' could not be found. Please check for compilation errors."
+            continue
         }
 
         # add the full modulename and the hash to the existing hashtable 
