@@ -33,10 +33,10 @@ function Get-TemplateHash {
                 $templateContent.PSObject.Properties.Remove($property.Name)
             }
         }
-        # rrder resources properties alphabetically
+        # reorder resources properties alphabetically
         $templateContent.resources = $templateContent.resources | Select-Object ($templateContent.resources | Get-Member -MemberType NoteProperty).Name
 
-        # create temp file and esport
+        # create temp file and export
         $tmpPath = Join-Path $PSScriptRoot ('HASH-{0}.json' -f (New-Guid))
         $templateContent | ConvertTo-Json -Depth 100 | Out-File $tmpPath
 
