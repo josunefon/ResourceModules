@@ -21,7 +21,7 @@ function Get-TemplateHash {
     )
 
     try {
-        $templateContent = Get-Content $TemplatePath -Raw | ConvertFrom-Json -Depth 100
+        $templateContent = Get-Content $TemplatePath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100
         # if no resouces tag, quit
         if ($templateContent.resources.Count -eq 0) {
             return ''
@@ -38,7 +38,7 @@ function Get-TemplateHash {
 
         # create temp file and export
         $tmpPath = Join-Path $PSScriptRoot ('HASH-{0}.json' -f (New-Guid))
-        $templateContent | ConvertTo-Json -Depth 100 | Out-File $tmpPath
+        $templateContent | ConvertTo-Json -Depth 100 | Out-File $tmpPath -Encoding UTF8
 
         # create hash
         $azHash = (Get-FileHash -Path $tmpPath -Algorithm SHA256).Hash

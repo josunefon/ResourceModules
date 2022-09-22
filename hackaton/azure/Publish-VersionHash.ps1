@@ -124,26 +124,26 @@ foreach ($release in $response) {
 
         if ($path -eq "Microsoft.Resources/resourceGroups") {
 
-        # if the file was compiled before, skip the compilation process
-        if (Get-Content "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
-            Write-Verbose "ARM file already exists. Skipping" -Verbose
-            continue
-        }
+            # if the file was compiled before, skip the compilation process
+            if (Get-Content "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
+                Write-Verbose "ARM file already exists. Skipping" -Verbose
+                continue
+            }
 
-        # compilation step. does not print any linter warnings
-        az bicep build --file $module.FullName --outfile "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" --no-restore --only-show-errors
+            # compilation step. does not print any linter warnings
+            az bicep build --file $module.FullName --outfile "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" --no-restore --only-show-errors
 
-        # do the hashing if the ARM-json exists
-        if (Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
-            $encodedText = Get-TemplateHash -TemplatePath "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
-        }
-        else {
-            Write-Warning "File '$jsonPath-deploy.json' could not be found. Please check for compilation errors."
-            continue
-        }
+            # do the hashing if the ARM-json exists
+            if (Get-Content -Path "../Azure-ResourceModules-ARM/$jsonPath-deploy.json" -ErrorAction SilentlyContinue) {
+                $encodedText = Get-TemplateHash -TemplatePath "../Azure-ResourceModules-ARM/$jsonPath-deploy.json"
+            }
+            else {
+                Write-Warning "File '$jsonPath-deploy.json' could not be found. Please check for compilation errors."
+                continue
+            }
 
-        # add the full modulename and the hash to the existing hashtable 
-        $moduleHashes.Add($path, $encodedText)
+            # add the full modulename and the hash to the existing hashtable 
+            $moduleHashes.Add($path, $encodedText)
 
             <# Action to perform if the condition is true #>
         
