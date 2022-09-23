@@ -14,7 +14,7 @@ param location string = 'WestEurope'
 
 var storageAccountKey = listKeys(resourceId(subscription().subscriptionId, resourceGroupName, storageAccountRef.type, storageAccountRef.name), storageAccountRef.apiVersion).keys[0].value
 
-module appServicePlan '../../modules/Microsoft.Web/serverfarms/deploy.bicep' = {
+module appServicePlan '../../../../modules/Microsoft.Web/serverfarms/deploy.bicep' = {
   name: '${name}-sp-${deployment().name}'
   params: {
     name: '${name}-sp'
@@ -26,7 +26,7 @@ module appServicePlan '../../modules/Microsoft.Web/serverfarms/deploy.bicep' = {
   }
 }
 
-module appService '../../modules/Microsoft.Web/sites/deploy.bicep' = {
+module appService '../../../../modules/Microsoft.Web/sites/deploy.bicep' = {
   name: '${name}-fa-${deployment().name}'
   params: {
     name: '${name}-fa'
@@ -50,7 +50,7 @@ module appService '../../modules/Microsoft.Web/sites/deploy.bicep' = {
   }
 }
 
-module appServiceLogging '../../modules/Microsoft.Web/sites/config-appsettings/deploy.bicep' = {
+module appServiceLogging '../../../../modules/Microsoft.Web/sites/config-appsettings/deploy.bicep' = {
   name: '${name}-falog-${deployment().name}'
   params: {
     appName: '${name}-fa'
@@ -81,7 +81,7 @@ resource appServiceSiteExtension 'Microsoft.Web/sites/siteextensions@2021-02-01'
   ]
 }
 
-module logAnalyticsWorkspace '../../modules/Microsoft.OperationalInsights/workspaces/deploy.bicep' = {
+module logAnalyticsWorkspace '../../../../modules/Microsoft.OperationalInsights/workspaces/deploy.bicep' = {
   name: '${name}-la-${deployment().name}'
   params: {
     name: '${name}-la'
@@ -92,7 +92,7 @@ module logAnalyticsWorkspace '../../modules/Microsoft.OperationalInsights/worksp
   }
 }
 
-module appInsights '../../modules/Microsoft.Insights/components/deploy.bicep' = {
+module appInsights '../../../../modules/Microsoft.Insights/components/deploy.bicep' = {
   name: '${name}-ai-${deployment().name}'
   params: {
     name: '${name}-ai'
@@ -103,7 +103,7 @@ module appInsights '../../modules/Microsoft.Insights/components/deploy.bicep' = 
   }
 }
 
-module storage '../../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
+module storage '../../../../modules/Microsoft.Storage/storageAccounts/deploy.bicep' = {
   name: '${staname}-stg-${deployment().name}'
   params: {
     name: staname
