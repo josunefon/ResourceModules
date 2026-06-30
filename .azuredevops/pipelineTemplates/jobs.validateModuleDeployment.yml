@@ -29,12 +29,10 @@
 ##   | vmImage                         | '$(vmImage)'                         | You can provide either a [poolname] or [vmImage] to run the job on.                                       | 'ubuntu20.04'                                         |
 ##   | defaultJobTimeoutInMinutes      | 120                                  | The timeout for the job in this pipeline.                                                                 | 120                                                   |
 ##   | removeDeployment                | 'true'                               | Set to [true] to flag resources for removal. If not provided, defaults to true.                           | 'true'                                                |
-##   | templateFilePath                | ''                                   | Path to the template file to deploy.                                                                      | 'arm/Microsoft.AnalysisServices/servers/deploy.bicep' |
-##   | customParameterFileTokens       | ''                                   |                                                                                                           |                                                       |
+##   | customTokens                    | ''                                   | Additional token pairs in json format.                                                                    | '{"tokenName":"tokenValue"}'                          |
 ##   | jobDisplayName                  | ''                                   | The display name of the job.                                                                              | 'Deploy module'                                       |
 ##   | modulePath                      | '$(modulePath)'                      | The path to the module to deploy.                                                                         | 'c:/KeyVault'                                         |
 ##   | location                        | '$(location)'                        | The location to deploy resources to.                                                                      | 'EastUs2'                                             |
-##   | resourceGroupName               | '$(resourceGroupName)'               | The resourcegroup to deploy into. Required only for Resource-Group-Level deployments.                     | 'validation-rg'                                       |
 ##   | subscriptionId                  | '$(ARM_SUBSCRIPTION_ID)'             | The id of the subscription to deploy into when using a Management group service connection.               | 'aed7c000-6387-412e-bed0-24dfddf4bbc6'                |
 ##   | managementGroupId               | '$(ARM_MGMTGROUP_ID)'                | The id of the management group to deploy into. Required only for Management-Group-Level deployments.      | '6ycc9620-cb01-454f-9ebc-fc6b1df48d64'                |
 ##   | azurePowerShellVersion          | '$(azurePowerShellVersion)'          | Used for configuring the Azure PowerShellModules Version, one of the example values.                      | 'latestVersion' or 'OtherVersion'                     |
@@ -51,11 +49,9 @@ parameters:
   defaultJobTimeoutInMinutes: 120
   # Logic-related parameters
   removeDeployment: false
-  templateFilePath: ''
-  customParameterFileTokens: ''
+  customTokens: ''
   modulePath: '$(modulePath)'
   location: '$(location)'
-  resourceGroupName: '$(resourceGroupName)'
   subscriptionId: '$(ARM_SUBSCRIPTION_ID)'
   managementGroupId: '$(ARM_MGMTGROUP_ID)'
   # Azure PowerShell Version parameters
@@ -78,7 +74,7 @@ jobs:
     dependsOn:
       - getModuleTestFiles
     strategy:
-      matrix: $[ dependencies.getModuleTestFiles.outputs['getModuleTestFilesTask.moduleTests'] ]
+      matrix: $[ dependencies.getModuleTestFiles.outputs['getModuleTestFilesTask.moduleTestFilePaths'] ]
     ##---------------------------------------------##
     ## TEMPLATE LOGIC                              ##
     ##---------------------------------------------##
@@ -95,7 +91,7 @@ jobs:
             . (Join-Path '$(System.DefaultWorkingDirectory)' 'utilities' 'pipelines' 'sharedScripts' 'Set-EnvironmentOnAgent.ps1')
 
             # Define PS modules to install on the runner
-            $Modules = @(
+            $modules = @(
                 @{ Name = 'Az.Accounts' },
                 @{ Name = 'Az.Resources' },
                 @{ Name = 'powershell-yaml'; Version = '0.4.2'}
@@ -103,10 +99,11 @@ jobs:
 
             # Additional PS modules need to be installed for the removal step in case it is enabled
             if ('${{ parameters.removeDeployment}}' -eq 'true') {
-              $Modules += @(
+              $modules += @(
                 @{ Name = 'Az.CognitiveServices' },
                 @{ Name = 'Az.Compute' },
                 @{ Name = 'Az.KeyVault' },
+                @{ Name = 'Az.MachineLearningServices' },
                 @{ Name = 'Az.Monitor' },
                 @{ Name = 'Az.OperationalInsights' },
                 @{ Name = 'Az.RecoveryServices' }
@@ -114,31 +111,31 @@ jobs:
             }
 
             # Set agent up
-            Set-EnvironmentOnAgent -PSModules $Modules
+            Set-EnvironmentOnAgent -PSModules $modules
 
       # [Agent] Replace tokens
       #-----------------------
-      - task: AzurePowerShell@5
-        displayName: 'Replace tokens in template file via connection [${{ parameters.serviceConnection }}]'
+      - task: PowerShell@2
+        displayName: 'Replace tokens in template files'
         inputs:
-          azureSubscription: ${{ parameters.serviceConnection }}
-          azurePowerShellVersion: 'latestVersion'
-          preferredAzurePowerShellVersion: ''
-          ScriptType: InlineScript
+          targetType: inline
           pwsh: true
-          inline: |
+          script: |
             # Load used functions
             . (Join-Path '$(System.DefaultWorkingDirectory)' 'utilities' 'pipelines' 'tokensReplacement' 'Convert-TokensInFileList.ps1')
-
-            # Get Service Principal Object ID
-            $context = Get-AzContext
-            $servicePrincipalAppId = $context.Account.Id
-            $servicePrincipal = Get-AzADServicePrincipal -ApplicationId $servicePrincipalAppId
-            $servicePrincipalObjectId = $servicePrincipal.Id
+            . (Join-Path '$(System.DefaultWorkingDirectory)' 'utilities' 'pipelines' 'sharedScripts' 'Get-LocallyReferencedFileList.ps1')
 
             # Get target files
             $moduleTestFilePath = Join-Path '$(System.DefaultWorkingDirectory)' '$(modulePath)' '$(moduleTestFilePath)'
-            $targetFileList = @($moduleTestFilePath)
+
+            # Get target files
+            $targetFileList = @(
+              $moduleTestFilePath
+            )
+
+            # Add all module template files as they may contain tokens
+            $targetFileList += (Get-LocallyReferencedFileList -FilePath $moduleTestFilePath)
+            $targetFileList = $targetFileList | Sort-Object -Unique
 
             # Construct Token Function Input
             $ConvertTokensInputs = @{
@@ -150,11 +147,9 @@ jobs:
 
             # Add enforced tokens
             $ConvertTokensInputs.Tokens += @{
-              resourceGroupName = '${{ parameters.resourceGroupName }}'
               subscriptionId    = '${{ parameters.subscriptionId }}'
               managementGroupId = '${{ parameters.managementGroupId }}'
               tenantId          = '$(ARM_TENANT_ID)'
-              deploymentSpId    = $servicePrincipalObjectId
             }
 
             # Add local (source control) tokens
@@ -172,8 +167,8 @@ jobs:
             }
 
             # Add custom tokens (passed in via the pipeline)
-            if(-not [String]::IsNullOrEmpty('${{ parameters.customParameterFileTokens }}')) {
-              $customTokens = '${{ parameters.customParameterFileTokens }}' | ConvertFrom-Json -AsHashTable
+            if(-not [String]::IsNullOrEmpty('${{ parameters.customTokens }}')) {
+              $customTokens = '${{ parameters.customTokens }}' | ConvertFrom-Json -AsHashTable
               Write-Verbose ('Using custom parameter file tokens [{0}]' -f ($customTokens.Keys -join ', ')) -Verbose
               $ConvertTokensInputs.Tokens += $customTokens
             }
@@ -181,17 +176,6 @@ jobs:
             Write-Verbose "Convert Tokens Input:`n $($ConvertTokensInputs | ConvertTo-Json -Depth 10)" -Verbose
 
             # Invoke Token Replacement Functionality [For Module]
-            $null = Convert-TokensInFileList @ConvertTokensInputs
-
-            # Get target files for modules dependencies
-            $DependencyParameterFilePaths = [System.Collections.ArrayList]@()
-            $DependencyParameterFolders = Get-ChildItem -Path (Join-Path '$(System.DefaultWorkingDirectory)' 'utilities' 'pipelines' 'dependencies') -Recurse -Filter 'parameters' -Directory
-            foreach ($FolderPath in $DependencyParameterFolders.FullName) {
-                $DependencyParameterFilePaths += Get-ChildItem -Path $FolderPath -Recurse -Filter '*.json'
-            }
-            $ConvertTokensInputs.FilePathList = $DependencyParameterFilePaths
-
-            # Invoke Token Replacement Functionality [For Dependencies]
             $null = Convert-TokensInFileList @ConvertTokensInputs
 
       # [Validation] task(s)
@@ -210,43 +194,33 @@ jobs:
 
             # Fetching parameters
             $location = '${{ parameters.location }}'
-            $resourceGroupName = '${{ parameters.resourceGroupName }}'
             $subscriptionId = '${{ parameters.subscriptionId }}'
             $managementGroupId = '${{ parameters.managementGroupId }}'
 
-            $moduleTemplateFilePath = Join-Path '$(System.DefaultWorkingDirectory)' '${{ parameters.templateFilePath }}'
+            # Resolve template file path
             $moduleTestFilePath = Join-Path '$(System.DefaultWorkingDirectory)' '$(modulePath)' '$(moduleTestFilePath)'
 
             # Determine possible parameters depending on file type
-            if ((Split-Path $moduleTemplateFilePath -Extension) -eq '.bicep') {
-                $moduleTemplateContent = az bicep build --file $moduleTemplateFilePath --stdout | ConvertFrom-Json -AsHashtable
+            if ((Split-Path $moduleTestFilePath -Extension) -eq '.bicep') {
+                $moduleTemplateContent = bicep build $moduleTestFilePath --stdout | ConvertFrom-Json -AsHashtable
                 $moduleTemplatePossibleParameters = $moduleTemplateContent.parameters.Keys
             } else {
-                $moduleTemplatePossibleParameters = ((Get-Content $moduleTemplateFilePath -Raw) | ConvertFrom-Json -AsHashtable).parameters.keys
+                $moduleTemplatePossibleParameters = ((Get-Content $moduleTestFilePath -Raw) | ConvertFrom-Json -AsHashtable).parameters.keys
             }
 
             # ----------- #
             # INVOKE TEST #
             # ----------- #
-
             # Building input object
             $functionInput = @{
-                TemplateFilePath     = ($moduleTestFilePath -like '*parameters.json') ? $moduleTemplateFilePath : $moduleTestFilePath
+                TemplateFilePath     = $moduleTestFilePath
                 Location             = $location
-                ResourceGroupName    = $resourceGroupName
                 SubscriptionId       = $subscriptionId
                 ManagementGroupId    = $managementGroupId
                 AdditionalParameters = @{}
             }
 
-            # Handle template file
-            if ($moduleTestFilePath -like '*parameters.json') {
-                # Original parameter file
-                $functionInput['parameterFilePath'] = $moduleTestFilePath
-            }
-
             # Handle additional parameters
-            # ----------------------------
             if (-not [System.Convert]::ToBoolean('$(enableDefaultTelemetry)') -and ($moduleTemplatePossibleParameters.Keys -contains 'enableDefaultTelemetry')) {
                 $functionInput['additionalParameters'] += @{
                     enableDefaultTelemetry = [System.Convert]::ToBoolean('$(enableDefaultTelemetry)')
@@ -275,19 +249,18 @@ jobs:
 
             # Fetching parameters
             $location = '${{ parameters.location }}'
-            $resourceGroupName = '${{ parameters.resourceGroupName }}'
             $subscriptionId = '${{ parameters.subscriptionId }}'
             $managementGroupId = '${{ parameters.managementGroupId }}'
 
-            $moduleTemplateFilePath = Join-Path '$(System.DefaultWorkingDirectory)' '${{ parameters.templateFilePath }}'
+            # Resolve template file path
             $moduleTestFilePath = Join-Path '$(System.DefaultWorkingDirectory)' '$(modulePath)' '$(moduleTestFilePath)'
 
             # Determine possible parameters depending on file type
-            if ((Split-Path $moduleTemplateFilePath -Extension) -eq '.bicep') {
-                $moduleTemplateContent = az bicep build --file $moduleTemplateFilePath --stdout | ConvertFrom-Json -AsHashtable
+            if ((Split-Path $moduleTestFilePath -Extension) -eq '.bicep') {
+                $moduleTemplateContent = bicep build $moduleTestFilePath --stdout | ConvertFrom-Json -AsHashtable
                 $moduleTemplatePossibleParameters = $moduleTemplateContent.parameters.Keys
             } else {
-                $moduleTemplatePossibleParameters = ((Get-Content $moduleTemplateFilePath -Raw) | ConvertFrom-Json -AsHashtable).parameters.keys
+                $moduleTemplatePossibleParameters = ((Get-Content $moduleTestFilePath -Raw) | ConvertFrom-Json -AsHashtable).parameters.keys
             }
 
             # ----------- #
@@ -296,23 +269,15 @@ jobs:
 
             # Building input object
             $functionInput = @{
-                TemplateFilePath     = ($moduleTestFilePath -like '*parameters.json') ? $moduleTemplateFilePath : $moduleTestFilePath
+                TemplateFilePath     = $moduleTestFilePath
                 Location             = $location
-                ResourceGroupName    = $resourceGroupName
                 SubscriptionId       = $subscriptionId
                 ManagementGroupId    = $managementGroupId
                 doNotThrow           = $true
                 AdditionalParameters = @{}
             }
 
-            # Handle template file
-            if ($moduleTestFilePath -like '*parameters.json') {
-                # Original paramter file
-                $functionInput['parameterFilePath'] = $moduleTestFilePath
-            }
-
             # Handle additional parameters
-            # ----------------------------
             if (-not [System.Convert]::ToBoolean('$(enableDefaultTelemetry)') -and ($moduleTemplatePossibleParameters.Keys -contains 'enableDefaultTelemetry')) {
                 $functionInput['additionalParameters'] += @{
                     enableDefaultTelemetry = [System.Convert]::ToBoolean('$(enableDefaultTelemetry)')
@@ -326,22 +291,21 @@ jobs:
             $res = New-TemplateDeployment @functionInput -Verbose
 
             # Get deployment name
-            $deploymentName = $res.deploymentName
-            Write-Verbose "Deployment name: $deploymentName" -Verbose
-            Write-Host "##vso[task.setvariable variable=deploymentName]$deploymentName"
-            Write-Host "##vso[task.setvariable variable=deploymentName;isOutput=true]$deploymentName"
+            $deploymentNames = $res.DeploymentNames | ConvertTo-Json -Compress
+            Write-Verbose "Deployment name(s) [$deploymentNames]" -Verbose
+            Write-Host "##vso[task.setvariable variable=deploymentNames]$deploymentNames"
+            Write-Host "##vso[task.setvariable variable=deploymentNames;isOutput=true]$deploymentNames"
 
             # Populate further outputs
-            $deploymentOutputHash=@{}
+            $deploymentOutputHashTable=@{}
 
             foreach ($outputKey in $res.deploymentOutput.Keys) {
               Write-Output ('##vso[task.setvariable variable={0}]{1}' -f $outputKey, $res.deploymentOutput[$outputKey].Value)
-              $deploymentOutputHash.add($outputKey,$res.deploymentOutput[$outputKey].Value)
+              $deploymentOutputHashTable.add($outputKey,$res.deploymentOutput[$outputKey].Value)
             }
 
-            $deploymentOutput = $deploymentOutputHash | ConvertTo-Json -Compress -Depth 100
+            $deploymentOutput = $deploymentOutputHashTable | ConvertTo-Json -Compress -Depth 100
             Write-Verbose "Deployment output: $deploymentOutput" -Verbose
-            Write-Output "##vso[task.setvariable variable=deploymentOutput;isOutput=true]$deploymentOutput"
 
             if ($res.ContainsKey('exception')) {
               # Happens only if there is an exception
@@ -352,7 +316,7 @@ jobs:
       #------------------
       - task: AzurePowerShell@5
         displayName: 'Remove deployed resources via [${{ parameters.serviceConnection }}]'
-        condition: and(succeededOrFailed(), eq('${{ parameters.removeDeployment }}', 'True'), not(eq(variables['deploymentName'],'')), not(startsWith(variables['deploymentName'], 'variables[' )))
+        condition: and(succeededOrFailed(), eq('${{ parameters.removeDeployment }}', 'True'), not(eq(variables['deploymentNames'],'')), not(startsWith(variables['deploymentNames'], 'variables[' )))
         inputs:
           azureSubscription: ${{ parameters.serviceConnection }}
           azurePowerShellVersion: ${{ parameters.azurePowerShellVersion }}
@@ -365,14 +329,10 @@ jobs:
             . (Join-Path '$(System.DefaultWorkingDirectory)' '$(pipelineFunctionsPath)' 'resourceRemoval' 'Initialize-DeploymentRemoval.ps1')
 
             $functionInput = @{
-              TemplateFilePath  = ('$(moduleTestFilePath)' -like '*parameters.json') ?
-                  (Join-Path '$(System.DefaultWorkingDirectory)' '${{ parameters.templateFilePath }}') :
-                  (Join-Path '$(System.DefaultWorkingDirectory)' '$(modulePath)' '$(moduleTestFilePath)')
-              ResourceGroupName = '${{ parameters.resourceGroupName }}'
+              TemplateFilePath  = Join-Path '$(System.DefaultWorkingDirectory)' '$(modulePath)' '$(moduleTestFilePath)'
               SubscriptionId    = '${{ parameters.subscriptionId }}'
               ManagementGroupId = '${{ parameters.managementGroupId }}'
-              deploymentName    = '$(deploymentName)'
-              Verbose           = $true
+              DeploymentNames   = '$(deploymentNames)' | ConvertFrom-Json
             }
 
             Write-Verbose 'Invoke task with' -Verbose

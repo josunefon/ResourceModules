@@ -5,7 +5,7 @@ This section details the design principles followed by the CARML Bicep modules.
 ### _Navigation_
 
 - [General guidelines](#general-guidelines)
-- [File & folder structure](#file--folder-structure)
+- [File \& folder structure](#file--folder-structure)
   - [Structure](#structure)
     - [**Child resources**](#child-resources)
   - [Naming](#naming)
@@ -27,10 +27,14 @@ This section details the design principles followed by the CARML Bicep modules.
 - [ReadMe](#readme)
 - [Module test files](#module-test-files)
 - [Telemetry](#telemetry)
+  - [Overview](#overview)
+  - [Technical Details](#technical-details)
+  - [Opting Out](#opting-out)
+  - [Telemetry vs Customer Usage Attribution](#telemetry-vs-customer-usage-attribution)
 
 ---
 
-Modules are written in a flexible way; therefore, you don't need to modify them from project to project, use case to use case, as they aim to cover most of the functionality that a given resource type can provide, in a way that you can interact with any module just by sending the required parameters to it - i.e., you don't have to know how the template of the particular module works inside, just take a look at the `readme.md` file of the given module to consume it.
+Modules are written in a flexible way; therefore, you don't need to modify them from project to project, use case to use case, as they aim to cover most of the functionality that a given resource type can provide, in a way that you can interact with any module just by sending the required parameters to it - i.e., you don't have to know how the template of the particular module works inside, just take a look at the `README.md` file of the given module to consume it.
 
 The modules are multi-purpose; therefore, contain a lot of dynamic expressions (functions, variables, etc.), so there's no need to maintain multiple instances for different use cases.
 
@@ -44,10 +48,12 @@ They can be deployed in different configurations just by changing the input para
   > **Example:** The VirtualNetworkPeering construct leverages the VirtualNetworkPeering module to deploy multiple virtual network peering connections at once.
 - Where the resource type in question supports it, the module should have support for:
   1. **Diagnostic logs** and **metrics** (you can have them sent to one ore more of the following destination types: storage account, log analytics and event hub).
-  2. Resource and child resource level **RBAC** (for example, providing data contributor access on a storage account; granting file share/blob container level access in a storage account)
-  3. **Tags** (as objects)
-  4. **Locks**
-  5. **Private Endpoints** (if supported)
+  1. Resource and child-resource level **RBAC** (for example, providing data contributor access on a storage account; granting file share/blob container level access in a storage account)
+  1. **Tags** (as objects)
+  1. **Locks**
+  1. **Private Endpoints** (if supported)
+  1. **User-Managed Identities** (if supported)
+  1. **Customer-managed Keys** (if supported)
 
 ---
 
@@ -59,19 +65,14 @@ They can be deployed in different configurations just by changing the input para
 
 A **CARML module** consists of
 
-- The Bicep template deployment file (`deploy.bicep`).
-- One or multiple template parameters files (`*parameters.json`) or module test files (`deploy.test.bicep`) that will be used for testing, located in the `.test` folder and its subfolders.
-- A `readme.md` file which describes the module itself.
+- The Bicep template deployment file (`main.bicep`).
+- One or multiple module test files (`main.test.bicep`) that will be used for testing, located in the `.test` folder and its subfolders.
+- A `README.md` file which describes the module itself.
+- A `version.json` file which contains information on the module's major and minor version.
 
 A module usually represents a single resource or a set of closely related resources. For example, a storage account and the associated lock or virtual machine and network interfaces. Modules are located in the `modules` folder.
 
-Also, each module should be implemented with all capabilities it and its children support. This includes
-
-- `Locks`
-- `Role assignments (RBAC)`
-- `Diagnostic Settings`
-- `Managed identities`
-- `Private Endpoints`.
+Also, as described in the [General Guidelines](#general-guidelines), each module should be implemented with all capabilities it and its children support.
 
 ## Structure
 
@@ -81,13 +82,13 @@ Modules in the repository are structured based on their main resource provider (
 
 Resources like `Microsoft.Sql/servers` may have dedicated templates for child resources such as `Microsoft.Sql/servers/databases`. In these cases, we recommend to create a subfolder named after the child resource, so that the path to the child resource folder is consistent with its resource type. In the given example, we would have a `databases` subfolder in the `servers` parent folder.
 
-```
+```txt
 Microsoft.Sql
 └─ servers [module]
   └─ databases [child-module/resource]
 ```
 
-In this folder, we recommend to place the child resource-template alongside a ReadMe (that can be generated via the [Set-ModuleReadMe](./Contribution%20guide%20-%20Generate%20module%20Readme) script) and optionally further nest additional folders for it's child resources.
+In this folder, we recommend to place the child resource-template alongside a ReadMe (that can be generated via the [Set-Module](./Contribution%20guide%20-%20Generate%20module%20Readme) script) and optionally further nest additional folders for it's child resources.
 
 The parent template should reference all it's direct child-templates to allow for an end-to-end deployment experience while allowing any user to also reference 'just' the child resource itself. In case of the SQL server example, the server template would reference the database module and encapsulate it in a loop to allow for the deployment of multiple databases. For example
 
@@ -95,38 +96,39 @@ The parent template should reference all it's direct child-templates to allow fo
 @description('Optional. The databases to create in the server')
 param databases array = []
 
-module server_databases 'databases/deploy.bicep' = [for (database, index) in databases: {}]
+module server_databases 'databases/main.bicep' = [for (database, index) in databases: {}]
 ```
 
 ## Naming
 
 Use the following naming standard for module files and folders:
 
-- Module folders are in camelCase and their name reflects the main resource type of the Bicep module they are hosting (e.g., `storageAccounts`, `virtualMachines`).
+- A module's 'Provider namespace' folder is lowercase, avoids the `Microsoft.` prefix and uses a `-` as a separator whenever the API reference would have an upper case (for example `'Microsoft.RecoveryServices'` would have a folder name `'recovery-services'`)
+- A module's 'Resource Type' folder is lowercase, singular and uses a `-` as a separator whenever the API reference would have an upper case (for example, `'storageAccounts'` would be `'storage-account'`, or `'virtualMachines'` be `virtual-machine`).
 - Extension resource modules are placed in the `.bicep` subfolder and named `nested_<crossReferencedResourceType>.bicep`
 
   ```txt
-  Microsoft.<Provider>
-  └─ <service>
+  <ProviderNamespace>
+  └─ <ResourceType>
       ├─ .bicep
       |  ├─ nested_extensionResource1.bicep
       ├─ .test
       |  └─ ...
-      ├─ deploy.bicep
-      └─ readme.md
+      ├─ main.bicep
+      └─ README.md
   ```
 
-  > **Example**: `nested_roleAssignments.bicep` in the `Microsoft.Web\sites\.bicep` folder contains the `site` resource RBAC implementation.
+  > **Example**: `nested_roleAssignments.bicep` in the `web\site\.bicep` folder contains the `site` resource's RBAC implementation.
   >
   > ```txt
-  > Microsoft.Web
-  > └─ sites
+  > web
+  > └─ site
   >    ├─ .bicep
   >    |  └─ nested_roleAssignments.bicep
   >    ├─ .test
   >    |  └─ ...
-  >    ├─ deploy.bicep
-  >    └─ readme.md
+  >    ├─ main.bicep
+  >    └─ README.md
   > ```
 
 ## Patterns
@@ -141,19 +143,14 @@ The locks extension can be added as a `resource` to the resource template direct
 <summary>Details</summary>
 
 ```bicep
-@allowed([
-  ''
-  'CanNotDelete'
-  'ReadOnly'
-])
-@description('Optional. Specify the type of lock.')
-param lock string = ''
+@description('Optional. The lock settings of the service.')
+param lock lockType
 
-resource <mainResource>_lock 'Microsoft.Authorization/locks@2017-04-01' = if (!empty(lock)) {
-  name: '${<mainResource>.name}-${lock}-lock'
+resource <mainResource>_lock 'Microsoft.Authorization/locks@2020-05-01' = if (!empty(lock ?? {}) && lock.?kind != 'None') {
+  name: lock.?name ?? 'lock-${name}'
   properties: {
-    level: any(lock)
-    notes: lock == 'CanNotDelete' ? 'Cannot delete resource or child resources.' : 'Cannot modify the resource or child resources.'
+    level: lock.?kind ?? ''
+    notes: lock.?kind == 'CanNotDelete' ? 'Cannot delete resource or child resources.' : 'Cannot delete or modify the resource or child resources.'
   }
   scope: <mainResource>
 }
@@ -163,12 +160,12 @@ resource <mainResource>_lock 'Microsoft.Authorization/locks@2017-04-01' = if (!e
 >
 > - Child and extension resources
 >   - Locks are not automatically passed down, as they are inherited by default in Azure
->   - The reference of the child/extension template should look similar to: `lock: contains(<childExtensionObject>, 'lock') ? <childExtensionObject>.lock : ''`
+>   - The reference of the child/extension template should look similar to: `lock: <childExtensionObject>.?lock ?? lock`
 >   - Using this implementation, a lock is only deployed to the child/extension resource if explicitly specified in the module's test file
 >   - For example, the lock of a Storage Account module is not automatically passed to a Storage Container child-deployment. Instead, the Storage Container resource is automatically locked by Azure together with a locked Storage Account
 > - Cross-referenced resources
 >   - All cross-referenced resources share the lock with the main resource to prevent depending resources to be changed or deleted
->   - The reference of the cross-referenced resource template should look similar to: `lock: contains(<referenceObject>, 'lock') ? <referenceObject>.lock : lock`
+>   - The reference of the cross-referenced resource template should look similar to: `lock: <referenceObject>.?lock ?? lock`
 >   - Using this implementation, a lock of the main resource is implicitly passed to the referenced module template
 >   - For example, the lock of a Key Vault module is automatically passed to an also deployed Private Endpoint module deployment
 
@@ -192,8 +189,12 @@ param roleAssignments array = []
 module <mainResource>_roleAssignments '.bicep/nested_roleAssignments.bicep' = [for (roleAssignment, index) in roleAssignments: {
   name: '${deployment().name}-rbac-${index}'
   params: {
+    description: contains(roleAssignment, 'description') ? roleAssignment.description : ''
     principalIds: roleAssignment.principalIds
+    principalType: contains(roleAssignment, 'principalType') ? roleAssignment.principalType : ''
     roleDefinitionIdOrName: roleAssignment.roleDefinitionIdOrName
+    condition: contains(roleAssignment, 'condition') ? roleAssignment.condition : ''
+    delegatedManagedIdentityResourceId: contains(roleAssignment, 'delegatedManagedIdentityResourceId') ? roleAssignment.delegatedManagedIdentityResourceId : ''
     resourceId: <mainResource>.id
   }
 }]
@@ -205,15 +206,45 @@ Here, you specify the platform roles available for the main resource.
 
 The `builtInRoleNames` variable contains the list of applicable roles for the specific resource which the `nested_roleAssignments.bicep` template applies.
 
-> **Note**: You use the helper script [Get-FormattedRBACRoles.ps1](./Contribution%20guide%20-%20Get%20formatted%20RBAC%20roles) to extract a formatted list of RBAC roles used in the CARML modules based on the RBAC lists in Azure.
+> **Note**: You use the helper script [Get-RoleAssignmentList.ps1](./Contribution%20guide%20-%20Get%20formatted%20RBAC%20roles) to get a formatted list of RBAC roles for a given service, used in the CARML modules.
 
 The element requires you to provide both the `principalIds` & `roleDefinitionOrIdName` to assign to the principal IDs. Also, the `resourceId` is target resource's resource ID that allows us to reference it as an `existing` resource. Note, the implementation of the `split` in the resource reference becomes longer the deeper you go in the child resource hierarchy.
 
 ```bicep
+@sys.description('Required. The IDs of the principals to assign the role to.')
 param principalIds array
-param principalType string = ''
+
+@sys.description('Required. The name of the role to assign. If it cannot be found you can specify the role definition ID instead.')
 param roleDefinitionIdOrName string
+
+@sys.description('Required. The resource ID of the resource to apply the role assignment to.')
 param resourceId string
+
+@sys.description('Optional. The principal type of the assigned principal ID.')
+@allowed([
+  'ServicePrincipal'
+  'Group'
+  'User'
+  'ForeignGroup'
+  'Device'
+  ''
+])
+param principalType string = ''
+
+@sys.description('Optional. The description of the role assignment.')
+param description string = ''
+
+@sys.description('Optional. The conditions on the role assignment. This limits the resources it can be assigned to. e.g.: @Resource[Microsoft.Storage/storageAccounts/blobServices/containers:ContainerName] StringEqualsIgnoreCase "foo_storage_container".')
+param condition string = ''
+
+@sys.description('Optional. Version of the condition.')
+@allowed([
+  '2.0'
+])
+param conditionVersion string = '2.0'
+
+@sys.description('Optional. ID of the delegated managed identity resource.')
+param delegatedManagedIdentityResourceId string = ''
 
 var builtInRoleNames = {
   'Owner': subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')
@@ -235,9 +266,13 @@ resource <mainResource> '<mainResourceProviderNamespace>/<resourceType>@<resourc
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for principalId in principalIds: {
   name: guid(<mainResource>.id, principalId, roleDefinitionIdOrName)
   properties: {
+    description: description
     roleDefinitionId: contains(builtInRoleNames, roleDefinitionIdOrName) ? builtInRoleNames[roleDefinitionIdOrName] : roleDefinitionIdOrName
     principalId: principalId
     principalType: !empty(principalType) ? any(principalType) : null
+    condition: !empty(condition) ? condition : null
+    conditionVersion: !empty(conditionVersion) && !empty(condition) ? conditionVersion : null
+    delegatedManagedIdentityResourceId: !empty(delegatedManagedIdentityResourceId) ? delegatedManagedIdentityResourceId : null
   }
   scope: <mainResource>
 }]
@@ -249,16 +284,12 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
 
 ### Diagnostic Settings
 
-The diagnostic settings may differ slightly, from resource to resource. Most notably, the `<LogsIfAny>` as well as `<MetricsIfAny>` may be different and have to be added by you. However, it may also happen that a given resource type simply doesn't support any metrics and/or logs. In this case, you can then remove the parameter and property from the module you develop.
+The diagnostic settings may differ slightly, from resource to resource. Most notably, the `<LogsIfAny>` as well as `<MetricsIfAny>` may be different and have to be added by you. Also possible, and default setting is to use the category `allLogs`. If using `allLogs`, the other `<LogsIfAny>` are not needed. However, it may also happen that a given resource type simply doesn't support any metrics and/or logs. In this case, you can then remove the parameter and property from the module you develop.
 
 <details>
 <summary>Details</summary>
 
 ```bicep
-@description('Optional. Specifies the number of days that logs will be kept for; a value of 0 will retain data indefinitely.')
-@minValue(0)
-@maxValue(365)
-param diagnosticLogsRetentionInDays int = 365
 
 @description('Optional. Resource ID of the diagnostic storage account.')
 param diagnosticStorageAccountId string = ''
@@ -272,12 +303,14 @@ param diagnosticEventHubAuthorizationRuleId string = ''
 @description('Optional. Name of the diagnostic event hub within the namespace to which logs are streamed. Without this, an event hub is created for each log category.')
 param diagnosticEventHubName string = ''
 
-@description('Optional. The name of logs that will be streamed.')
+@description('Optional. The name of logs that will be streamed. "allLogs" includes all possible logs for the resource. Set to \'\' to disable log collection.')
 @allowed([
+  ''
+  'allLogs'
   <LogsIfAny>
 ])
 param diagnosticLogCategoriesToEnable array = [
-  <LogsIfAny>
+  'allLogs'
 ]
 
 @description('Optional. The name of metrics that will be streamed.')
@@ -288,30 +321,29 @@ param diagnosticMetricsToEnable array = [
   <MetricsIfAny>
 ]
 
-@description('Optional. The name of the diagnostic setting, if deployed.')
-param diagnosticSettingsName string = '${name}-diagnosticSettings'
+@description('Optional. The name of the diagnostic setting, if deployed. If left empty, it defaults to "<resourceName>-diagnosticSettings".')
+param diagnosticSettingsName string = ''
 
-var diagnosticsLogs = [for category in diagnosticLogCategoriesToEnable: {
+var diagnosticsLogsSpecified = [for category in filter(diagnosticLogCategoriesToEnable, item => item != 'allLogs' && item != ''): {
   category: category
   enabled: true
-  retentionPolicy: {
-    enabled: true
-    days: diagnosticLogsRetentionInDays
-  }
 }]
+
+var diagnosticsLogs = contains(diagnosticLogCategoriesToEnable, 'allLogs') ? [
+  {
+    categoryGroup: 'allLogs'
+    enabled: true
+  }
+] : contains(diagnosticLogCategoriesToEnable, '') ? [] : diagnosticsLogsSpecified
 
 var diagnosticsMetrics = [for metric in diagnosticMetricsToEnable: {
   category: metric
   timeGrain: null
   enabled: true
-  retentionPolicy: {
-    enabled: true
-    days: diagnosticLogsRetentionInDays
-  }
 }]
 
 resource <mainResource>_diagnosticSettings 'Microsoft.Insights/diagnosticsettings@2021-05-01-preview' = if (!empty(diagnosticStorageAccountId) || !empty(diagnosticWorkspaceId) || !empty(diagnosticEventHubAuthorizationRuleId) || !empty(diagnosticEventHubName)) {
-  name: diagnosticSettingsName
+  name: !empty(diagnosticSettingsName) ? diagnosticSettingsName : '${name}-diagnosticSettings'
   properties: {
     storageAccountId: !empty(diagnosticStorageAccountId) ? diagnosticStorageAccountId : null
     workspaceId: !empty(diagnosticWorkspaceId) ? diagnosticWorkspaceId : null
@@ -341,7 +373,7 @@ The Private Endpoint deployment has 2 elements. A module that contains the imple
 @description('Optional. Configuration details for private endpoints. For security reasons, it is recommended to use private endpoints whenever possible.')
 param privateEndpoints array = []
 
-module <mainResource>_privateEndpoints 'https://github.com/Azure/ResourceModules/blob/main/Microsoft.Network/privateEndpoints/deploy.bicep' = [for (privateEndpoint, index) in privateEndpoints: {
+module <mainResource>_privateEndpoints 'https://github.com/Azure/ResourceModules/blob/main/network/private-endpoint/main.bicep' = [for (privateEndpoint, index) in privateEndpoints: {
   name: '${uniqueString(deployment().name, location)}-<mainResource>-PrivateEndpoint-${index}'
   params: {
     groupIds: [
@@ -351,16 +383,18 @@ module <mainResource>_privateEndpoints 'https://github.com/Azure/ResourceModules
     serviceResourceId: <mainResource>.id
     subnetResourceId: privateEndpoint.subnetResourceId
     enableDefaultTelemetry: enableReferencedModulesTelemetry
-    location: reference(split(privateEndpoint.subnetResourceId, '/subnets/')[0], '2020-06-01', 'Full').location
+    location: contains(privateEndpoint, 'location') ? privateEndpoint.location : reference(split(privateEndpoint.subnetResourceId, '/subnets/')[0], '2020-06-01', 'Full').location
     lock: contains(privateEndpoint, 'lock') ? privateEndpoint.lock : lock
     privateDnsZoneGroup: contains(privateEndpoint, 'privateDnsZoneGroup') ? privateEndpoint.privateDnsZoneGroup : {}
     roleAssignments: contains(privateEndpoint, 'roleAssignments') ? privateEndpoint.roleAssignments : []
     tags: contains(privateEndpoint, 'tags') ? privateEndpoint.tags : {}
     manualPrivateLinkServiceConnections: contains(privateEndpoint, 'manualPrivateLinkServiceConnections') ? privateEndpoint.manualPrivateLinkServiceConnections : []
     customDnsConfigs: contains(privateEndpoint, 'customDnsConfigs') ? privateEndpoint.customDnsConfigs : []
+    ipConfigurations: contains(privateEndpoint, 'ipConfigurations') ? privateEndpoint.ipConfigurations : []
+    applicationSecurityGroups: contains(privateEndpoint, 'applicationSecurityGroups') ? privateEndpoint.applicationSecurityGroups : []
+    customNetworkInterfaceName: contains(privateEndpoint, 'customNetworkInterfaceName') ? privateEndpoint.customNetworkInterfaceName : ''
   }
 }]
-
 ```
 
 </details>
@@ -385,6 +419,12 @@ Within a bicep file, use the following conventions:
   - `Conditional` - The parameter value can be optional or required based on a condition, mostly based on the value provided to other parameters.
   - `Optional` - The parameter value is not mandatory. The module provides a default value for the parameter.
   - `Generated` - The parameter value is generated within the module and should not be specified as input.
+- Parameters mapping to resource properties should align with resource property names as much as possible and should not artificially include a resource type's name prefix to avoid redundancy.
+  > For example, the input parameter of the Key Vault module which maps to the `name` resource property should be just `name` and not `keyVaultName`. The rationale is that the consumers know that the name is for the Key Vault if they deploy its module.
+- If a property value allows a single value only, there is no need to introduce a parameter for it. Instead it can be hardcoded into the deployment.
+  > For example, the name of a Blob Container Immutability Policy resource can only be `default`. Hence we can implement its name property directly as `name: 'default'`.
+- If a property value allows a single value only, but the value is used in more than one place, a variable should be introduced to be leveraged in the multiple occurrences.
+  > For example, in cases where the resource name can be hardcoded and the resource supports diagnostic settings, also the default value for the diagnostic settings name `"<resourceName>-diagnosticSettings"` is affected. In those cases, we recommend to introduce an additional variable `'var name = '<theHardcodedValue>'`' (e.g., `var name = 'default'`) to be used both in the main resource's name (e.g., `'name: name'`), as well as the diagnostic settings name: `'name: !empty(diagnosticSettingsName) ? diagnosticSettingsName : '${name}-diagnosticSettings'`'.
 
 ## Variables
 
@@ -459,7 +499,7 @@ Within a bicep file, use the following conventions:
 
 - Module symbolic names are in camel_Snake_Case, following the schema `<mainResourceType>_<referencedResourceType>` e.g., `storageAccount_fileServices`, `virtualMachine_nic`, `resourceGroup_roleAssignments`.
 - Modules enable you to reuse code from a Bicep file in other Bicep files. As such, they're normally leveraged for deploying child resources (e.g., file services in a storage account), cross referenced resources (e.g., network interface in a virtual machine) or extension resources (e.g., role assignment in a resource group).
-- When a module requires to deploy a resource whose resource type is outside of the main module's provider namespace, the module of this additional resource is referenced locally. For example, when extending the Key Vault module with Private Endpoints, instead of including in the Key Vault module an ad hoc implementation of a Private Endpoint, the Key Vault directly references the Private Endpoint module (i.e., `module privateEndpoint 'https://github.com/Azure/ResourceModules/blob/main/Microsoft.Network/privateEndpoints/deploy.bicep'`). Major benefits of this implementation are less code duplication, more consistency throughout the module library and allowing the consumer to leverage the full interface provided by the referenced module.
+- When a module requires to deploy a resource whose resource type is outside of the main module's provider namespace, the module of this additional resource is referenced locally. For example, when extending the Key Vault module with Private Endpoints, instead of including in the Key Vault module an ad hoc implementation of a Private Endpoint, the Key Vault directly references the Private Endpoint module (i.e., `module privateEndpoint 'https://github.com/Azure/ResourceModules/blob/main/network/private-endpoint/main.bicep'`). Major benefits of this implementation are less code duplication, more consistency throughout the module library and allowing the consumer to leverage the full interface provided by the referenced module.
   > **Note**: Cross-referencing modules from the local repository creates a dependency for the modules applying this technique on the referenced modules being part of the local repository. Reusing the example from above, the Key Vault module has a dependency on the referenced Private Endpoint module, meaning that the repository from which the Key Vault module is deployed also requires the Private Endpoint module to be present. For this reason, we provide a utility to check for any local module references in a given path. This can be useful to determine which module folders you'd need if you don't want to keep the entire library. For further information on how to use the tool, please refer to the tool-specific [documentation](./Getting%20started%20-%20Get%20module%20cross-references).
 
 ### Deployment names
@@ -476,10 +516,10 @@ There are some constraints that needs to be considered when naming the deploymen
 
 While exceptions might be needed, the following guidance should be followed as much as possible:
 
-- When deploying more than one resource of the same referenced module is needed, we leverage loops using integer index and items in an array as per [Bicep loop syntax](https://docs.microsoft.com/en-us/azure/azure-resource-manager/bicep/loops#loop-syntax). In this case, we also use `-${index}` as a suffix of the deployment name to avoid race condition:
+- When deploying more than one resource of the same referenced module is needed, we leverage loops using integer index and items in an array as per [Bicep loop syntax](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/loops#loop-syntax). In this case, we also use `-${index}` as a suffix of the deployment name to avoid race condition:
 
-  ```
-  module symbolic_name 'path/to/referenced/module/deploy.bicep' = [for (<item>, <index>) in <collection>: {
+  ```bicep
+  module symbolic_name 'path/to/referenced/module/main.bicep' = [for (<item>, <index>) in <collection>: {
     name: '<deploymentName>-${index}'
     ...
   }]
@@ -487,32 +527,32 @@ While exceptions might be needed, the following guidance should be followed as m
 
   > **Example**: for the `roleAssignment` deployment in the Key Vault `secrets` template
   >
-  > ```
+  > ```bicep
   >   module secret_roleAssignments '.bicep/nested_roleAssignments.bicep' = [for (roleAssignment, index) in roleAssignments: {
   >     name: '${deployment().name}-Rbac-${index}'
   > ```
 
 - For referenced resources of the top-level resource inside the top-level template use the following naming structure:
 
-  ```
+  ```bicep
   '${uniqueString(deployment().name, location)}-<topLevelResourceType>-<referencedResourceType>'
   ```
 
   > **Example**: for the `tableServices` deployment inside the `storageAccount` template
   >
-  > ```
+  > ```bicep
   > name: '${uniqueString(deployment().name, location)}-Storage-TableServices'
   > ```
 
 - In the referenced resource template use the following naming structure:
 
-  ```
+  ```bicep
   '${deployment().name}-<referencedResourceType>[-${index}]'
   ```
 
   > **Example**: for the `tables` deployment in the `tableServices` template
   >
-  > ```
+  > ```bicep
   > name: '${deployment().name}-Table-${index}'
   > ```
 
@@ -523,7 +563,7 @@ While exceptions might be needed, the following guidance should be followed as m
   - `name`
   - `resourceId`
   - `resourceGroupName` for modules that are deployed at resource group scope
-  - `systemAssignedPrincipalId` for all modules that support managed identities
+  - `systemAssignedMIPrincipalId` for all modules that support system-assigned managed identities
   - `location` for all modules where the primary resource has a location property
 - Add a `@description('...')` annotation with meaningful description to each output.
 
@@ -538,127 +578,70 @@ Its primary components are in order:
 - A short description
 - A **Resource types** section with a table that outlines all resources that can be deployed as part of the module.
 - A **Parameters** section with a table containing all parameters, their type, default and allowed values if any, and their description.
-- Optionally, a **Parameter Usage** section that shows how to use complex structures such as parameter objects or array of objects, e.g., roleAssignments, tags, privateEndpoints.
 - An **Outputs** section with a table that describes all outputs the module template returns.
-- A **Template references** section listing relevant resources [Azure resource reference](https://docs.microsoft.com/en-us/azure/templates).
+- A **Template references** section listing relevant resources [Azure resource reference](https://learn.microsoft.com/en-us/azure/templates).
 
 Note the following recommendations:
 
 - Refer to [Generate module Readme](./Contribution%20guide%20-%20Generate%20module%20Readme) for creating from scratch or updating the module ReadMe Markdown file.
-- It is not recommended to describe how to use child resources in the parent readme file (for example, 'How to define a \[container] entry for the \[storage account]'). Instead, it is recommended to reference the child resource's ReadMe (for example, 'container/readme.md').
+- It is not recommended to describe how to use child resources in the parent readme file (for example, 'How to define a \[container] entry for the \[storage account]'). Instead, it is recommended to reference the child resource's ReadMe (for example, 'container/README.md').
 
 # Module test files
 
-Module test files in CARML are implemented in
+Module test files in CARML are implemented using comprehensive `.bicep` test files that not only test the module's template in a certain scenario, but also deploy any required dependency for it.
 
-- a classic way leveraging the common `deploymentParameters.json` schema for ARM deployments or
-- using comprehensive `.bicep` test files that not only test the module's template in a certain scenario, but also deploy any required dependency for it. All classic test files will be migrated to this module following the issue [1583](https://github.com/Azure/ResourceModules/issues/1583).
-
-In either case, we follow the following, general guidelines:
+Module test files follow these general guidelines:
 
 - A module should have as many module test files as it needs to evaluate all parts of the module's functionality.
-- Sensitive data should not be stored inside the module test file but rather be injected by the use of tokens, as described in the [Token replacement](./The%20CI%20environment%20-%20Token%20replacement) section, or via a [Key Vault reference](https://docs.microsoft.com/en-us/azure/azure-resource-manager/templates/key-vault-parameter?tabs=azure-cli#reference-secrets-with-static-id).
+- Sensitive data should not be stored inside the module test file but rather be injected by the use of tokens, as described in the [Token replacement](./The%20CI%20environment%20-%20Token%20replacement) section, or via a [Key Vault reference](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/key-vault-parameter?tabs=azure-cli#reference-secrets-with-static-id).
 
-In addition, we follow the following, file-type-specific guidelines:
+Test folder guidelines:
 
-- JSON Parameter file specific
-  - Parameter file names should ideally relate to the content they deploy. For example, a parameter file `min.parameters.json` should be chosen for a parameter file that contains only the minimum set of parameters to deploy the module.
-  - Likewise, the `name` parameter we have in most modules should give some indication of the file it was deployed with. For example, a `min.parameters.json` parameter file for the virtual network module may have a `name` property with the value `sxx-az-vnet-min-001` where `min` relates to the prefix of the parameter file itself.
-- Bicep file specific
+- Each scenario should be setup in its own sub-folder (e.g. `.test/linux`)
+- Sub-folder names should ideally relate to the content they deploy. For example, a sub-folder `min` should be chosen for a scenario in which only the minimum set of parameters, i.e., only required parameters, are used to deploy the module.
+- Each folder should contain at least a file `main.test.bicep` and optionally an additional `dependencies.bicep` file.
 
-  - Each scenario should be setup in its own sub-folder (e.g. `.test/linux`)
-  - Each folder should contain at least a file `deploy.test.bicep` and optionally an additional `dependencies.bicep` file. The `deploy.test.bicep` file should deploy any immediate dependencies (e.g. a resource group, if required) and invoke the module's main template while providing all parameters for a given test scenario. The `dependencies.bicep` should optionally be used if any additional dependencies must be deployed into a nested scope (e.g. into a deployed resource group).
-  - Parameters
-    - Each file should define a parameter `serviceShort`. This parameter should be unique to this file (i.e, no two test files should share the same) as it is injected into all resource deployments, making them unique too and account for corresponding requirements. As a reference you can create a identifier by combining a substring of the resource type and test scenario (e.g., in case of a Linux Virtual Machine Deployment: `vmlin`)
-    - If the module deploys a resource group level resource, the template should further have a `resourceGroupName` parameter and subsequent resource deployment. As a reference for the default name you can use `ms.<providerNamespace>.<resourceType>-${serviceShort}-test-rg`.
-    - Each file should also provide a `location` parameter that may default to the deployments default location
-  - It is recommended to define all major resource names in the `deploy.test.bicep` file as it makes later maintenance easier. To implement this, make sure to pass all resource names to any referenced module.
-  - References to dependencies should be implemented using resource references in combination with outputs. In other words: You should not hardcode any references into the module template's deployment. Instead use references such as `resourceGroupResources.outputs.managedIdentityPrincipalId`
-  - If any diagnostic resources (e.g., a Log Analytics workspace) are required for a test scenario, you can reference the centralized `modules/.shared/dependencyConstructs/diagnostic.dependencies.bicep` template. It will also provide you with all outputs you'd need.
+Test file (`main.test.bicep`) guidelines:
 
-    <details>
-    <summary>Example (for a resource group level resource)</summary>
+- The `main.test.bicep` file should deploy any immediate dependencies (e.g. a resource group, if required) and invoke the module's main template while providing all parameters for a given test scenario.
+- Parameters
+  - Each file should define a parameter `serviceShort`. This parameter should be unique to this file (i.e, no two test files should share the same) as it is injected into all resource deployments, making them unique too and account for corresponding requirements.
+    - As a reference you can create a identifier by combining a substring of the resource type and test scenario (e.g., in case of a Linux Virtual Machine Deployment: `vmlin`).
+    - For the substring, we recommend to take the first character and subsequent upper-case characters from the resource type identifier and combine them into one string. Following you can find a few examples for reference:
+      - `Microsoft.DBforPostgreSQL/flexibleServers` with a test folder `common` could be: `dfpsfscom`
+      - `Microsoft.Storage/storageAccounts` with a test folder `min` could be: `ssamin`
+      > **Note:** If the combination of the `servicesShort` with the rest of a resource name becomes too long, it may be necessary to bend the above recommendations and shorten the name. This can especially happen when deploying resources such as Virtual Machines or Storage Accounts that only allow comparatively short names.
+  - If the module deploys a resource group level resource, the template should further have a `resourceGroupName` parameter and subsequent resource deployment. As a reference for the default name you can use `ms.<providerNamespace>.<resourceType>-${serviceShort}-test-rg`.
+  - Each file should also provide a `location` parameter that may default to the deployments default location
+- It is recommended to define all major resource names in the `main.test.bicep` file as it makes later maintenance easier. To implement this, make sure to pass all resource names to any referenced module.
+- Further, for any test file (including the `dependencies.bicep` file), the usage of variables should be reduced to the absolute minimum. In other words: You should only use variables if you must use them in more than one place. The idea is to keep the test files as simple as possible
+- References to dependencies should be implemented using resource references in combination with outputs. In other words: You should not hardcode any references into the module template's deployment. Instead use references such as `nestedDependencies.outputs.managedIdentityPrincipalId`
+- If any diagnostic resources (e.g., a Log Analytics workspace) are required for a test scenario, you can reference the centralized `modules/.shared/.templates/diagnostic.dependencies.bicep` template. It will also provide you with all outputs you'd need.
 
-    ```Bicep
-    targetScope = 'subscription'
+> :scroll: [Example of test file](https://github.com/Azure/ResourceModules/blob/main/modules/AnalysisServices/servers/.test/common/main.test.bicep)
 
-    // ========== //
-    // Parameters //
-    // ========== //
-    @description('Optional. The name of the resource group to deploy for testing purposes')
-    @maxLength(90)
-    param resourceGroupName string = 'ms.analysisservices.servers-${serviceShort}-test-rg'
+Dependency file (`dependencies.bicep`) guidelines:
 
-    @description('Optional. The location to deploy resources to')
-    param location string = deployment().location
+- The `dependencies.bicep` should optionally be used if any additional dependencies must be deployed into a nested scope (e.g. into a deployed Resource Group).
+- Note that you can reuse many of the assets implemented in other modules. For example, there are many recurring implementations for Managed Identities, Key Vaults, Virtual Network deployments, etc.
 
-    @description('Optional. A short identifier for the kind of deployment. Should be kept short to not run into resource-name length-constraints')
-    param serviceShort string = 'asdef'
+  - A special case to point out is the implementation of Key Vaults that require purge protection (for example, for Customer Managed Keys). As this implies that we cannot fully clean up a test deployment, it is recommended to generate a new name for this resource upon each pipeline run using the output of the `utcNow()` function at the time.
 
-    // =========== //
-    // Deployments //
-    // =========== //
+    > :scroll: [Example of test using purge protected Key Vault dependency](https://github.com/Azure/ResourceModules/tree/main/modules/batch/batch-account/.test/encr)
 
-    // General resources
-    // =================
-    resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-      name: resourceGroupName
-      location: location
-    }
-
-    module resourceGroupResources 'dependencies.bicep' = {
-      scope: resourceGroup
-      name: '${uniqueString(deployment().name, location)}-nestedDependencies'
-      params: {
-        managedIdentityName: 'dep-<<namePrefix>>-msi-${serviceShort}'
-      }
-    }
-
-    // Diagnostics
-    // ===========
-    module diagnosticDependencies '../../../../.shared/dependencyConstructs/diagnostic.dependencies.bicep' = {
-      scope: resourceGroup
-      name: '${uniqueString(deployment().name, location)}-diagnosticDependencies'
-      params: {
-        storageAccountName: 'dep<<namePrefix>>azsa${serviceShort}01'
-        logAnalyticsWorkspaceName: 'dep-<<namePrefix>>-law-${serviceShort}'
-        eventHubNamespaceEventHubName: 'dep-<<namePrefix>>-evh-${serviceShort}'
-        eventHubNamespaceName: 'dep-<<namePrefix>>-evhns-${serviceShort}'
-        location: location
-      }
-    }
-
-    // ============== //
-    // Test Execution //
-    // ============== //
-
-    module testDeployment '../../deploy.bicep' = {
-      scope: resourceGroup
-      name: '${uniqueString(deployment().name)}-test-${serviceShort}'
-      params: {
-        name: '<<namePrefix>>az${serviceShort}'
-        lock: 'CanNotDelete'
-        skuName: 'S0'
-        roleAssignments: [
-          {
-            roleDefinitionIdOrName: 'Reader'
-            principalIds: [
-              resourceGroupResources.outputs.managedIdentityPrincipalId
-            ]
-          }
-        ]
-        diagnosticLogsRetentionInDays: 7
-        diagnosticStorageAccountId: diagnosticDependencies.outputs.storageAccountResourceId
-        diagnosticWorkspaceId: diagnosticDependencies.outputs.logAnalyticsWorkspaceResourceId
-        diagnosticEventHubAuthorizationRuleId: diagnosticDependencies.outputs.eventHubAuthorizationRuleId
-        diagnosticEventHubName: diagnosticDependencies.outputs.eventHubNamespaceEventHubName
-      }
-    }
-    ```
-
-    </details>
+  - If you need a Deployment Script to set additional non-template resources up (for example certificates/files, etc.), we recommend to store it as a file in the shared `modules/.shared/.scripts` folder and load it using the template function `loadTextContent()` (for example: `scriptContent: loadTextContent('../../../../../.shared/.scripts/New-SSHKey.ps1')`). This approach makes it easier to test & validate the logic and further allows reusing the same logic across multiple test cases.
 
 # Telemetry
+
+## Overview
+
+Microsoft uses the approach detailed in this section to identify the deployments of the Bicep and ARM JSON templates of the CARML library. Microsoft collects this information to provide the best experiences with their products and to operate their business. Telemetry data is captured through the built-in mechanisms of the Azure platform; therefore, it never leaves the platform, providing only Microsoft with access. Deployments are identified through a specific GUID (Globally Unique ID), indicating that the code originated from the CARML library. The data is collected and governed by Microsoft's privacy policies, located at the [Trust Center](https://www.microsoft.com/en-us/trust-center).
+
+Telemetry collected as described here does not provide Microsoft with insights into the resources deployed, their configuration or any customer data stored in or processed by Azure resources deployed by using code from the CARML library. Microsoft does not track the usage/consumption of individual resources using telemetry described here.
+
+> **Note:** While telemetry gathered as described here is only accessible by Microsoft, Customers have access to the exact same deployment information on the Azure portal, under the Deployments section of the corresponding scope (Resource Group, Subscription, etc.).
+
+## Technical Details
 
 Each module in CARML contains a `defaultTelemetry` deployment `'pid-<GUID>-${uniqueString(deployment().name)}'`, resulting in deployments such as `'pid-<GUID>-nx2c3rnlt2wru'`.
 
@@ -667,7 +650,11 @@ Each module in CARML contains a `defaultTelemetry` deployment `'pid-<GUID>-${uni
 > - Deployment of the KeyVault module and 2 Secrets: Results in 1 `PID` deployment for the KeyVault (and none for the secrets)
 > - Deployment of the Secret module: Results in 1 `PID` deployment for the Secret
 
-This resource enables the CARML product team to query the number of deployments of a given template from Azure - and as such, get insights into its adoption.
+## Opting Out
+
+Albeit telemetry described in this section is optional, the implementation follows an opt-out logic, as most commercial software solutions, this project also requires continuously demonstrating evidence of usage, hence the CARML team recommends leaving the telemetry setting on its default, enabled configuration.
+
+This resource enables the CARML team to query the number of deployments of a given template from Azure - and as such, get insights into its adoption.
 
 When using CARML's CI environment you can enable/disable this deployment by switching the `enableDefaultTelemetry` setting in the `settings.yml` file in the repository's root. This value is automatically injected into each individual deployment that is performed as part of the environment's pipeline.
 
@@ -676,6 +663,8 @@ When consuming the modules outside of CARML's pipelines you can either
 - Set the parameter to a default value of `'false'`
 - Set the parameter to false when deploying a module
 
-> **Note:** _The deployment and its GUID can NOT be used to track [Azure Consumed Revenue (ACR)](https://docs.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution)._
->
-> _If you want to track consumption, we recommend to implement it on the consuming template's level (i.e., the multi-module solution, such as workload/application) and apply the required naming format `'pid-<GUID>'` (without the suffix)._
+## Telemetry vs Customer Usage Attribution
+
+Though similar in principles, this approach is not to be confused and does not conflict with the usage of CUA IDs that are used to track Customer Usage Attribution of Azure marketplace solutions (partner solutions). The GUID-based telemetry approach described here can coexist and can be used side-by-side with CUA IDs. If you have any partner or customer scenarios that require the addition of CUA IDs, you can customize the modules of this library by adding the required CUA ID deployment while keeping the built-in telemetry solution.
+
+> **Note:** _If you’re a partner and want to build a solution that tracks customer usage attribution (using a [CUA ID](https://learn.microsoft.com/en-us/azure/marketplace/azure-partner-customer-usage-attribution)), we recommend implementing it on the consuming template's level (i.e., the multi-module solution, such as workload/application) and apply the required naming format 'pid-<GUID>' (without the suffix)._

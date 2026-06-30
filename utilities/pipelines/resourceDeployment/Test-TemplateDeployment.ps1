@@ -30,20 +30,23 @@ Optional. Name of the management group to deploy into. Mandatory if deploying in
 .PARAMETER additionalParameters
 Optional. Additional parameters you can provide with the deployment. E.g. @{ resourceGroupName = 'myResourceGroup' }
 
-.EXAMPLE
-Test-TemplateDeployment -templateFilePath 'C:/KeyVault/deploy.bicep' -parameterFilePath 'C:/KeyVault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
-
-Test the deploy.bicep of the KeyVault module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
+.PARAMETER RepoRoot
+Optional. The path to the repository's root
 
 .EXAMPLE
-Test-TemplateDeployment -templateFilePath 'C:/KeyVault/deploy.bicep' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
+Test-TemplateDeployment -templateFilePath 'C:/key-vault/vault/main.bicep' -parameterFilePath 'C:/key-vault/vault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
 
-Test the deploy.bicep of the KeyVault module using the resource group 'aLegendaryRg' in location 'WestEurope'
+Test the main.bicep of the KeyVault module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
 
 .EXAMPLE
-Test-TemplateDeployment -templateFilePath 'C:/ResourceGroup/deploy.json' -parameterFilePath 'C:/ResourceGroup/.test/parameters.json' -location 'WestEurope'
+Test-TemplateDeployment -templateFilePath 'C:/key-vault/vault/main.bicep' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
 
-Test the deploy.json of the ResourceGroup module with the parameter file 'parameters.json' in location 'WestEurope'
+Test the main.bicep of the KeyVault module using the resource group 'aLegendaryRg' in location 'WestEurope'
+
+.EXAMPLE
+Test-TemplateDeployment -templateFilePath 'C:/resources/resource-group/main.json' -parameterFilePath 'C:/resources/resource-group/.test/parameters.json' -location 'WestEurope'
+
+Test the main.json of the ResourceGroup module with the parameter file 'parameters.json' in location 'WestEurope'
 #>
 function Test-TemplateDeployment {
 
@@ -68,17 +71,40 @@ function Test-TemplateDeployment {
         [string] $managementGroupId,
 
         [Parameter(Mandatory = $false)]
-        [Hashtable] $additionalParameters
+        [Hashtable] $additionalParameters,
+
+        [Parameter(Mandatory = $false)]
+        [string] $RepoRoot = (Get-Item -Path $PSScriptRoot).parent.parent.parent.FullName
     )
 
     begin {
         Write-Debug ('{0} entered' -f $MyInvocation.MyCommand)
 
         # Load helper
-        . (Join-Path (Get-Item -Path $PSScriptRoot).parent.FullName 'sharedScripts' 'Get-ScopeOfTemplateFile.ps1')
+        . (Join-Path $RepoRoot 'utilities' 'pipelines' 'sharedScripts' 'Get-ScopeOfTemplateFile.ps1')
     }
 
     process {
+        $deploymentNamePrefix = Split-Path -Path (Split-Path $templateFilePath -Parent) -LeafBase
+        if ([String]::IsNullOrEmpty($deploymentNamePrefix)) {
+            $deploymentNamePrefix = 'templateDeployment-{0}' -f (Split-Path $templateFilePath -LeafBase)
+        }
+
+        $modulesRegex = '.+[\\|\/]modules[\\|\/]'
+        if ($templateFilePath -match $modulesRegex) {
+            # If we can assume we're operating in a module structure, we can further fetch the provider namespace & resource type
+            $shortPathElem = (($templateFilePath -split $modulesRegex)[1] -replace '\\', '/') -split '/' # e.g., app-configuration, configuration-store, .test, common, main.test.bicep
+            $providerNamespace = $shortPathElem[0] # e.g., app-configuration
+            $providerNamespaceShort = ($providerNamespace -split '-' | ForEach-Object { $_[0] }) -join '' # e.g., ac
+
+            $resourceType = $shortPathElem[1] # e.g., configuration-store
+            $resourceTypeShort = ($resourceType -split '-' | ForEach-Object { $_[0] }) -join '' # e.g. cs
+
+            $testFolderShort = Split-Path (Split-Path $templateFilePath -Parent) -Leaf  # e.g., common
+
+            $deploymentNamePrefix = "$providerNamespaceShort-$resourceTypeShort-$testFolderShort" # e.g., ac-cs-common
+        }
+
         $DeploymentInputs = @{
             TemplateFile = $templateFilePath
             Verbose      = $true
@@ -96,23 +122,19 @@ function Test-TemplateDeployment {
 
         $deploymentScope = Get-ScopeOfTemplateFile -TemplateFilePath $templateFilePath -Verbose
 
-        if ($deploymentScope -ne 'resourceGroup') {
-            $deploymentNamePrefix = Split-Path -Path (Split-Path $templateFilePath -Parent) -LeafBase
-            if ([String]::IsNullOrEmpty($deploymentNamePrefix)) {
-                $deploymentNamePrefix = 'templateDeployment-{0}' -f (Split-Path $templateFilePath -LeafBase)
-            }
-            # Generate a valid deployment name. Must match ^[-\w\._\(\)]+$
-            do {
-                $deploymentName = "$deploymentNamePrefix-$(-join (Get-Date -Format yyyyMMddTHHMMssffffZ)[0..63])"
-            } while ($deploymentName -notmatch '^[-\w\._\(\)]+$')
+        # Generate a valid deployment name. Must match ^[-\w\._\(\)]+$
+        do {
+            $deploymentName = ('{0}-{1}' -f $deploymentNamePrefix, (Get-Date -Format 'yyyyMMddTHHMMssffffZ'))[0..63] -join ''
+        } while ($deploymentName -notmatch '^[-\w\._\(\)]+$')
 
+        if ($deploymentScope -ne 'resourceGroup') {
             Write-Verbose "Testing with deployment name [$deploymentName]" -Verbose
             $DeploymentInputs['DeploymentName'] = $deploymentName
         }
 
-        #######################
-        ## INVOKE DEPLOYMENT ##
-        #######################
+        #################
+        ## INVOKE TEST ##
+        #################
         switch ($deploymentScope) {
             'resourceGroup' {
                 if (-not [String]::IsNullOrEmpty($subscriptionId)) {

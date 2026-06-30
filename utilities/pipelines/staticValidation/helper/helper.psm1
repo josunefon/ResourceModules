@@ -5,8 +5,10 @@ $repoRootPath = (Get-Item $PSScriptRoot).Parent.Parent.Parent.Parent.FullName
 
 . (Join-Path $repoRootPath 'utilities' 'pipelines' 'sharedScripts' 'Get-NestedResourceList.ps1')
 . (Join-Path $repoRootPath 'utilities' 'pipelines' 'sharedScripts' 'Get-ScopeOfTemplateFile.ps1')
-. (Join-Path $repoRootPath 'utilities' 'pipelines' 'sharedScripts' 'Get-ModuleTestFileList.ps1')
+. (Join-Path $repoRootPath 'utilities' 'pipelines' 'sharedScripts' 'helper' 'ConvertTo-OrderedHashtable.ps1')
+. (Join-Path $repoRootPath 'utilities' 'pipelines' 'sharedScripts' 'helper' 'Get-IsParameterRequired.ps1')
 . (Join-Path $repoRootPath 'utilities' 'tools' 'Get-CrossReferencedModuleList.ps1')
+. (Join-Path $repoRootPath 'utilities' 'tools' 'helper' 'Get-PipelineFileName.ps1')
 
 ####################################
 #   Load test-specific functions   #
@@ -128,4 +130,49 @@ function Get-TableStartAndEndIndex {
     }
 
     return $tableStartIndex, $tableEndIndex
+}
+
+<#
+.SYNOPSIS
+Remove metadata blocks from given template object
+
+.DESCRIPTION
+Remove metadata blocks from given template object
+
+.PARAMETER TemplateObject
+The template object to remove the metadata from
+
+.EXAMPLE
+Remove-JSONMetadata -TemplateObject @{ metadata = 'a'; b = 'b' }
+
+Returns @{ b = 'b' }
+#>
+function Remove-JSONMetadata {
+
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [hashtable] $TemplateObject
+    )
+    $TemplateObject.Remove('metadata')
+
+    # Differantiate case: With user defined types (resources property is hashtable) vs without user defined types (resources property is array)
+    if ($TemplateObject.resources.GetType().BaseType.Name -eq 'Hashtable') {
+        # Case: Hashtable
+        $resourceIdentifiers = $TemplateObject.resources.Keys
+        for ($index = 0; $index -lt $resourceIdentifiers.Count; $index++) {
+            if ($TemplateObject.resources[$resourceIdentifiers[$index]].type -eq 'Microsoft.Resources/deployments' -and $TemplateObject.resources[$resourceIdentifiers[$index]].properties.template.GetType().BaseType.Name -eq 'Hashtable') {
+                $TemplateObject.resources[$resourceIdentifiers[$index]] = Remove-JSONMetadata -TemplateObject $TemplateObject.resources[$resourceIdentifiers[$index]].properties.template
+            }
+        }
+    } else {
+        # Case: Array
+        for ($index = 0; $index -lt $TemplateObject.resources.Count; $index++) {
+            if ($TemplateObject.resources[$index].type -eq 'Microsoft.Resources/deployments' -and $TemplateObject.resources[$index].properties.template.GetType().BaseType.Name -eq 'Hashtable') {
+                $TemplateObject.resources[$index] = Remove-JSONMetadata -TemplateObject $TemplateObject.resources[$index].properties.template
+            }
+        }
+    }
+
+    return $TemplateObject
 }

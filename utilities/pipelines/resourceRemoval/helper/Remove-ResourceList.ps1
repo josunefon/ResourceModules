@@ -40,11 +40,11 @@ function Remove-ResourceListInner {
 
             if ($alreadyProcessed) {
                 # Skipping
-                Write-Verbose ('Skipping resource [{0}] of type [{1}] as a parent resource was already processed' -f $resourceName, $resource.type) -Verbose
+                Write-Verbose ('[/] Skipping resource [{0}] of type [{1}]. Reason: Its parent resource was already processed' -f $resourceName, $resource.type) -Verbose
                 [array]$processedResources += $resource.resourceId
                 [array]$resourcesToRetry = $resourcesToRetry | Where-Object { $_.resourceId -notmatch $resource.resourceId }
             } else {
-                Write-Verbose ('Removing resource [{0}] of type [{1}]' -f $resourceName, $resource.type) -Verbose
+                Write-Verbose ('[-] Removing resource [{0}] of type [{1}]' -f $resourceName, $resource.type) -Verbose
                 try {
                     if ($PSCmdlet.ShouldProcess(('Resource [{0}]' -f $resource.resourceId), 'Remove')) {
                         Invoke-ResourceRemoval -Type $resource.type -ResourceId $resource.resourceId
@@ -54,7 +54,7 @@ function Remove-ResourceListInner {
                     [array]$processedResources += $resource.resourceId
                     [array]$resourcesToRetry = $resourcesToRetry | Where-Object { $_.resourceId -notmatch $resource.resourceId }
                 } catch {
-                    Write-Warning ('Removal moved back for re-try. Reason: [{0}]' -f $_.Exception.Message)
+                    Write-Warning ('[!] Removal moved back for retry. Reason: [{0}]' -f $_.Exception.Message)
                     [array]$resourcesToRetry += $resource
                 }
             }
@@ -107,7 +107,7 @@ function Remove-ResourceList {
 
     do {
         if ($PSCmdlet.ShouldProcess(("[{0}] Resource(s) with a maximum of [$removalRetryLimit] attempts." -f (($resourcesToRetry -is [array]) ? $resourcesToRetry.Count : 1)), 'Remove')) {
-            $resourcesToRetry = Remove-ResourceListInner -ResourcesToRemove $resourcesToRetry -Verbose
+            $resourcesToRetry = Remove-ResourceListInner -ResourcesToRemove $resourcesToRetry
         } else {
             Remove-ResourceListInner -ResourcesToRemove $resourcesToRemove -WhatIf
         }
@@ -115,7 +115,7 @@ function Remove-ResourceList {
         if (-not $resourcesToRetry) {
             break
         }
-        Write-Verbose ('Re-try removal of remaining [{0}] resources. Waiting [{1}] seconds. Round [{2}|{3}]' -f (($resourcesToRetry -is [array]) ? $resourcesToRetry.Count : 1), $removalRetryInterval, $removalRetryCount, $removalRetryLimit)
+        Write-Verbose ('Retry removal of remaining [{0}] resources. Waiting [{1}] seconds. Round [{2}|{3}]' -f (($resourcesToRetry -is [array]) ? $resourcesToRetry.Count : 1), $removalRetryInterval, $removalRetryCount, $removalRetryLimit)
         $removalRetryCount++
         Start-Sleep $removalRetryInterval
     } while ($removalRetryCount -le $removalRetryLimit)

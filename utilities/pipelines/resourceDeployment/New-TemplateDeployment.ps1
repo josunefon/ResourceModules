@@ -102,16 +102,21 @@ Optional. Maximum retry limit if the deployment fails. Default is 3.
 Optional. Do not throw an exception if it failed. Still returns the error message though
 
 .EXAMPLE
-New-DeploymentWithParameterFile -templateFilePath 'C:/KeyVault/deploy.json' -parameterFilePath 'C:/KeyVault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
+New-TemplateDeploymentInner -templateFilePath 'C:/key-vault/vault/main.json' -parameterFilePath 'C:/key-vault/vault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
 
-Deploy the deploy.json of the KeyVault module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
+Deploy the main.json of the KeyVault module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
 
 .EXAMPLE
-New-DeploymentWithParameterFile -templateFilePath 'C:/ResourceGroup/deploy.json' -location 'WestEurope'
+New-TemplateDeploymentInner -templateFilePath 'C:/key-vault/vault/main.bicep' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
 
-Deploy the deploy.json of the ResourceGroup module without a parameter file in location 'WestEurope'
+Deploy the main.bicep of the KeyVault module using the resource group 'aLegendaryRg' in location 'WestEurope'
+
+.EXAMPLE
+New-TemplateDeploymentInner -templateFilePath 'C:/resources/resource-group/main.json' -location 'WestEurope'
+
+Deploy the main.json of the ResourceGroup module without a parameter file in location 'WestEurope'
 #>
-function New-DeploymentWithParameterFile {
+function New-TemplateDeploymentInner {
 
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
@@ -148,9 +153,6 @@ function New-DeploymentWithParameterFile {
 
     begin {
         Write-Debug ('{0} entered' -f $MyInvocation.MyCommand)
-
-        # Load helper
-        . (Join-Path (Get-Item -Path $PSScriptRoot).parent.FullName 'sharedScripts' 'Get-ScopeOfTemplateFile.ps1')
     }
 
     process {
@@ -158,18 +160,26 @@ function New-DeploymentWithParameterFile {
         if ([String]::IsNullOrEmpty($deploymentNamePrefix)) {
             $deploymentNamePrefix = 'templateDeployment-{0}' -f (Split-Path $templateFilePath -LeafBase)
         }
-        # Generate a valid deployment name. Must match ^[-\w\._\(\)]+$
-        do {
-            $deploymentName = "$deploymentNamePrefix-$(-join (Get-Date -Format yyyyMMddTHHMMssffffZ)[0..63])"
-        } while ($deploymentName -notmatch '^[-\w\._\(\)]+$')
 
-        Write-Verbose "Deploying with deployment name [$deploymentName]" -Verbose
+        $modulesRegex = '.+[\\|\/]modules[\\|\/]'
+        if ($templateFilePath -match $modulesRegex) {
+            # If we can assume we're operating in a module structure, we can further fetch the provider namespace & resource type
+            $shortPathElem = (($templateFilePath -split $modulesRegex)[1] -replace '\\', '/') -split '/' # e.g., app-configuration, configuration-store, .test, common, main.test.bicep
+            $providerNamespace = $shortPathElem[0] # e.g., app-configuration
+            $providerNamespaceShort = ($providerNamespace -split '-' | ForEach-Object { $_[0] }) -join '' # e.g., ac
+
+            $resourceType = $shortPathElem[1] # e.g., configuration-store
+            $resourceTypeShort = ($resourceType -split '-' | ForEach-Object { $_[0] }) -join '' # e.g. cs
+
+            $testFolderShort = Split-Path (Split-Path $templateFilePath -Parent) -Leaf  # e.g., common
+
+            $deploymentNamePrefix = "$providerNamespaceShort-$resourceTypeShort-$testFolderShort" # e.g., ac-cs-common
+        }
 
         $DeploymentInputs = @{
-            DeploymentName = $deploymentName
-            TemplateFile   = $templateFilePath
-            Verbose        = $true
-            ErrorAction    = 'Stop'
+            TemplateFile = $templateFilePath
+            Verbose      = $true
+            ErrorAction  = 'Stop'
         }
 
         # Parameter file provided yes/no
@@ -206,8 +216,18 @@ function New-DeploymentWithParameterFile {
         $deploymentScope = Get-ScopeOfTemplateFile -TemplateFilePath $templateFilePath
         [bool]$Stoploop = $false
         [int]$retryCount = 1
+        $usedDeploymentNames = @()
 
         do {
+            # Generate a valid deployment name. Must match ^[-\w\._\(\)]+$
+            do {
+                $deploymentName = ('{0}-t{1}-{2}' -f $deploymentNamePrefix, $retryCount, (Get-Date -Format 'yyyyMMddTHHMMssffffZ'))[0..63] -join ''
+            } while ($deploymentName -notmatch '^[-\w\._\(\)]+$')
+
+            Write-Verbose "Deploying with deployment name [$deploymentName]" -Verbose
+            $usedDeploymentNames += $deploymentName
+            $DeploymentInputs['DeploymentName'] = $deploymentName
+
             try {
                 switch ($deploymentScope) {
                     'resourcegroup' {
@@ -282,8 +302,8 @@ function New-DeploymentWithParameterFile {
                         }
 
                         return @{
-                            DeploymentName = $deploymentName
-                            Exception      = $exceptionMessage
+                            DeploymentNames = $usedDeploymentNames
+                            Exception       = $exceptionMessage
                         }
                     } else {
                         throw $PSitem.Exception.Message
@@ -303,8 +323,8 @@ function New-DeploymentWithParameterFile {
         Write-Verbose '------' -Verbose
         Write-Verbose ($res | Out-String) -Verbose
         return @{
-            deploymentName   = $deploymentName
-            deploymentOutput = $res.Outputs
+            DeploymentNames  = $usedDeploymentNames
+            DeploymentOutput = $res.Outputs
         }
     }
 
@@ -341,7 +361,7 @@ Optional. ID of the subscription to deploy into. Mandatory if deploying into a s
 Optional. Name of the management group to deploy into. Mandatory if deploying into a management group (management group level)
 
 .PARAMETER additionalTags
-Optional. Provde a Key Value Pair (Object) that will be appended to the Parameter file tags. Example: @{myKey = 'myValue',myKey2 = 'myValue2'}.
+Optional. Provide a Key Value Pair (Object) that will be appended to the Parameter file tags. Example: @{myKey = 'myValue', myKey2 = 'myValue2'}.
 
 .PARAMETER additionalParameters
 Optional. Additional parameters you can provide with the deployment. E.g. @{ resourceGroupName = 'myResourceGroup' }
@@ -352,20 +372,23 @@ Optional. Maximum retry limit if the deployment fails. Default is 3.
 .PARAMETER doNotThrow
 Optional. Do not throw an exception if it failed. Still returns the error message though
 
-.EXAMPLE
-New-TemplateDeployment -templateFilePath 'C:/KeyVault/deploy.bicep' -parameterFilePath 'C:/KeyVault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
-
-Deploy the deploy.bicep of the KeyVault module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
+.PARAMETER RepoRoot
+Optional. The path to the repository's root
 
 .EXAMPLE
-New-TemplateDeployment -templateFilePath 'C:/ResourceGroup/deploy.bicep' -location 'WestEurope'
+New-TemplateDeployment -templateFilePath 'C:/key-vault/vault/main.bicep' -parameterFilePath 'C:/key-vault/vault/.test/parameters.json' -location 'WestEurope' -resourceGroupName 'aLegendaryRg'
 
-Deploy the deploy.json of the ResourceGroup module in location 'WestEurope'
+Deploy the main.bicep of the 'key-vault/vault' module with the parameter file 'parameters.json' using the resource group 'aLegendaryRg' in location 'WestEurope'
 
 .EXAMPLE
-New-TemplateDeployment -templateFilePath 'C:/ResourceGroup/deploy.json' -parameterFilePath 'C:/ResourceGroup/.test/parameters.json' -location 'WestEurope'
+New-TemplateDeployment -templateFilePath 'C:/resources/resource-group/main.bicep' -location 'WestEurope'
 
-Deploy the deploy.json of the ResourceGroup module with the parameter file 'parameters.json' in location 'WestEurope'
+Deploy the main.bicep of the 'resources/resource-group' module in location 'WestEurope' without a parameter file
+
+.EXAMPLE
+New-TemplateDeployment -templateFilePath 'C:/resources/resource-group/main.json' -parameterFilePath 'C:/resources/resource-group/.test/parameters.json' -location 'WestEurope'
+
+Deploy the main.json of the 'resources/resource-group' module with the parameter file 'parameters.json' in location 'WestEurope'
 #>
 function New-TemplateDeployment {
 
@@ -399,11 +422,17 @@ function New-TemplateDeployment {
         [switch] $doNotThrow,
 
         [Parameter(Mandatory = $false)]
-        [int]$retryLimit = 3
+        [int]$retryLimit = 3,
+
+        [Parameter(Mandatory = $false)]
+        [string] $RepoRoot = (Get-Item -Path $PSScriptRoot).parent.parent.parent.FullName
     )
 
     begin {
         Write-Debug ('{0} entered' -f $MyInvocation.MyCommand)
+
+        # Load helper
+        . (Join-Path $RepoRoot 'utilities' 'pipelines' 'sharedScripts' 'Get-ScopeOfTemplateFile.ps1')
     }
 
     process {
@@ -431,18 +460,18 @@ function New-TemplateDeployment {
                 $deploymentResult = [System.Collections.ArrayList]@()
                 foreach ($path in $parameterFilePath) {
                     if ($PSCmdlet.ShouldProcess("Deployment for parameter file [$parameterFilePath]", 'Trigger')) {
-                        $deploymentResult += New-DeploymentWithParameterFile @deploymentInputObject -parameterFilePath $path
+                        $deploymentResult += New-TemplateDeploymentInner @deploymentInputObject -parameterFilePath $path
                     }
                 }
                 return $deploymentResult
             } else {
                 if ($PSCmdlet.ShouldProcess("Deployment for single parameter file [$parameterFilePath]", 'Trigger')) {
-                    return New-DeploymentWithParameterFile @deploymentInputObject -parameterFilePath $parameterFilePath
+                    return New-TemplateDeploymentInner @deploymentInputObject -parameterFilePath $parameterFilePath
                 }
             }
         } else {
             if ($PSCmdlet.ShouldProcess('Deployment without parameter file', 'Trigger')) {
-                return New-DeploymentWithParameterFile @deploymentInputObject
+                return New-TemplateDeploymentInner @deploymentInputObject
             }
         }
     }
